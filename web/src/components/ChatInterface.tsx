@@ -1,10 +1,5 @@
 import React, { useState } from 'react';
 import { Send, Bot, User, Loader2, ThumbsUp, ThumbsDown, Edit3, ChevronRight, Code, Database } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface Message {
   id: string;
@@ -68,49 +63,45 @@ export default function ChatInterface() {
   return (
     <div className="flex flex-col h-screen max-w-5xl mx-auto p-4">
       {/* Messages Area */}
-      <ScrollArea className="flex-1 mb-4 space-y-4 pr-4">
+      <div className="flex-1 mb-4 space-y-4 pr-4 overflow-y-auto">
         {messages.map((message) => (
           <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
-            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-              message.role === 'user' ? 'bg-blue-600' : 'bg-green-600'
-            }`}>
+            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${message.role === 'user' ? 'bg-blue-600' : 'bg-green-600'}`}>
               {message.role === 'user' ? <User className="w-5 h-5 text-white" /> : <Bot className="w-5 h-5 text-white" />}
             </div>
             
-            <Card className={`flex-1 ${message.role === 'user' ? 'bg-blue-50' : ''}`}>
-              <CardContent className="p-4">
+            <div className={`flex-1 rounded-lg border ${message.role === 'user' ? 'bg-blue-50 border-blue-200' : 'bg-white border-gray-200'}`}>
+              <div className="p-4">
                 <div className="whitespace-pre-wrap">{message.content}</div>
                 
                 {/* Confidence & Actions */}
                 {message.role === 'assistant' && (
                   <div className="mt-3 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
+                      <span className="text-xs px-2 py-1 bg-gray-100 rounded-full border">
                         {(message.confidence! * 100).toFixed(0)}% confidence
-                      </Badge>
+                      </span>
                       {message.sqlQuery && (
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="h-6 text-xs gap-1"
+                        <button 
+                          className="h-6 px-2 text-xs gap-1 bg-gray-100 rounded-md border hover:bg-gray-200 flex items-center"
                           onClick={() => toggleWork(message.id)}
                         >
                           <Code className="w-3 h-3" />
                           {expandedWork.includes(message.id) ? 'Hide Work' : 'Show Work'}
-                        </Button>
+                        </button>
                       )}
                     </div>
                     
                     <div className="flex gap-1">
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      <button className="h-8 w-8 p-0 bg-gray-100 rounded-md border hover:bg-gray-200 flex items-center justify-center">
                         <ThumbsUp className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      </button>
+                      <button className="h-8 w-8 p-0 bg-gray-100 rounded-md border hover:bg-gray-200 flex items-center justify-center">
                         <ThumbsDown className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                      </button>
+                      <button className="h-8 w-8 p-0 bg-gray-100 rounded-md border hover:bg-gray-200 flex items-center justify-center">
                         <Edit3 className="w-4 h-4" />
-                      </Button>
+                      </button>
                     </div>
                   </div>
                 )}
@@ -125,8 +116,8 @@ export default function ChatInterface() {
                     <pre>{message.sqlQuery}</pre>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         ))}
         
@@ -135,29 +126,31 @@ export default function ChatInterface() {
             <div className="flex-shrink-0 w-8 h-8 rounded-full bg-green-600 flex items-center justify-center">
               <Bot className="w-5 h-5 text-white" />
             </div>
-            <Card>
-              <CardContent className="p-4 flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Analyzing data and searching market context...</span>
-              </CardContent>
-            </Card>
+            <div className="rounded-lg border border-gray-200 bg-white p-4 flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Analyzing data and searching market context...</span>
+            </div>
           </div>
         )}
-      </ScrollArea>
+      </div>
 
       {/* Input Area */}
       <div className="flex gap-2">
-        <Input
+        <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyPress={(e) => e.key === 'Enter' && handleSend()}
           placeholder="Ask anything about your business data..."
           disabled={isLoading}
-          className="flex-1"
+          className="flex-1 p-3 rounded-lg border border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 disabled:opacity-50"
         />
-        <Button onClick={handleSend} disabled={isLoading || !input.trim()}>
+        <button 
+          onClick={handleSend} 
+          disabled={isLoading || !input.trim()}
+          className="p-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center"
+        >
           {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-        </Button>
+        </button>
       </div>
     </div>
   );
