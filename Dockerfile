@@ -30,7 +30,10 @@ COPY --from=builder /root/.local /home/analyst/.local
 # Copy application code
 COPY agent/ ./agent/
 COPY api/ ./api/
-COPY web/dist/ ./web/dist/ 2>/dev/null || echo "Frontend not built yet"
+
+# Create web/dist directory if it doesn't exist (for first-time builds)
+RUN mkdir -p ./web/dist
+COPY web/dist/ ./web/dist/ || true
 
 # Set environment variables
 ENV PATH=/home/analyst/.local/bin:$PATH \
