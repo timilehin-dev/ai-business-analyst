@@ -3,10 +3,16 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# Install build dependencies
+# Install build dependencies for Python packages including Rust-based ones
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
+    build-essential \
+    pkg-config \
+    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Rust toolchain for Rust-based Python packages (pyreqwest-impersonate)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:$PATH"
 
 # Install Python dependencies
 COPY requirements.txt .
