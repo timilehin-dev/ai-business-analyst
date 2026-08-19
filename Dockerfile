@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -33,7 +33,7 @@ COPY api/ ./api/
 
 # Create web/dist directory if it doesn't exist (for first-time builds)
 RUN mkdir -p ./web/dist
-COPY web/dist/ ./web/dist/ || true
+COPY web/dist/ ./web/dist/
 
 # Set environment variables
 ENV PATH=/home/analyst/.local/bin:$PATH \
