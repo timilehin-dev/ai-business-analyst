@@ -23,9 +23,19 @@ class ConfigStore(Base):
 
 class DatabaseManager:
     def __init__(self, database_url: Optional[str] = None):
-        # Default to SQLite for zero-config MVP, switch to Postgres in prod
+        # Default to SQLite for zero-config MVP, switch to Postgres in prod.
+        # Respect the DATABASE_URL env var / settings when provided.
+        self.data_dir = os.environ.get("DATA_DIR", os.path.join(os.getcwd(), "data"))
+
         if database_url is None:
-            db_path = os.path.join(os.getcwd(), "data", "analyst.db")
+            try:
+                from api.config import settings
+                database_url = settings.database.url
+            except Exception:
+                database_url = None
+
+        if database_url is None or database_url == "sqlite:///./data/analyst.db":
+            db_path = os.path.join(self.data_dir, "analyst.db")
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
             self.database_url = f"sqlite:///{db_path}"
         else:
@@ -44,7 +54,7 @@ class DatabaseManager:
         Base.metadata.create_all(bind=self.engine)
 
     def _load_or_generate_key(self) -> Fernet:
-        key_path = os.path.join(os.getcwd(), "data", ".secret_key")
+        key_path = os.path.join(self.data_dir, ".secret_key")
         os.makedirs(os.path.dirname(key_path), exist_ok=True)
         
         if os.path.exists(key_path):

@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import SetupWizard from './components/SetupWizard';
 import Dashboard from './components/Dashboard';
 import Briefing from './components/Briefing';
@@ -9,13 +9,18 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Navigate to="/setup" replace />} />
-        <Route path="/setup" element={<SetupWizard />} />
+        <Route path="/setup" element={<SetupWizardWrapper />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/briefing" element={<Briefing />} />
         <Route path="/chat" element={<ChatInterface />} />
       </Routes>
     </Router>
   );
+}
+
+function SetupWizardWrapper() {
+  const navigate = useNavigate();
+  return <SetupWizard onComplete={() => navigate('/dashboard')} />;
 }
 
 export default App;

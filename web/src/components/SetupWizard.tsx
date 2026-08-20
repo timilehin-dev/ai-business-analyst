@@ -67,6 +67,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          organization_name: 'My Organization',
           database: {
             type: config.dbType,
             host: config.dbHost,

@@ -1,0 +1,30 @@
+# Git internals
+.git
+.gitignore
+
+# Dependencies (never send to Docker daemon)
+web/node_modules
+node_modules
+
+# Local data & secrets
+data
+*.db
+.secret_key
+.env
+.env.*
+
+# Python artifacts
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+
+# Build artifacts (frontend is built inside the image)
+web/dist
+
+# Editor/OS files
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+*.log

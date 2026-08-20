@@ -342,8 +342,8 @@ def create_agent_graph(
     
     workflow.add_conditional_edges(
         source="planner",
-        condition=route_after_planner,
-        mapping={
+        path=route_after_planner,
+        path_map={
             "newsroom": "newsroom",
             "sql_generator": "sql_generator"
         }
@@ -366,8 +366,8 @@ def create_agent_graph(
     
     workflow.add_conditional_edges(
         source="validator",
-        condition=route_after_validator,
-        mapping={
+        path=route_after_validator,
+        path_map={
             "reporter": "reporter",
             "escalate": END  # Could add escalation node later
         }

@@ -3,6 +3,7 @@ FastAPI Backend - Main application entry point.
 Serves API endpoints and static frontend files.
 Integrates Setup Wizard, Chat, Briefing, and all agent capabilities.
 """
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,17 +23,59 @@ from api.routes.setup import router as setup_router
 
 # ==================== APP INITIALIZATION ====================
 
+# Global analyst instance (initialized on startup)
+analyst = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize application state on startup, clean up on shutdown."""
+    global analyst
+
+    print(f"🚀 Starting {settings.app_name}")
+    print(f"📊 Model config: {settings.models}")
+    print(f"🔒 Security mode: air_gap={settings.security.air_gap_mode}, read_only={settings.security.read_only}")
+    print(f"🌐 Newsroom: {'enabled' if settings.newsroom.enabled else 'disabled'}")
+
+    # Ensure data directory exists
+    os.makedirs(settings.data_dir, exist_ok=True)
+
+    # Initialize the analyst from settings (setup wizard can override later)
+    try:
+        model_config = {
+            "reasoning": settings.models.reasoning,
+            "sql": settings.models.sql,
+            "embedding": settings.models.embedding,
+            "fallback": settings.models.fallback,
+        }
+        analyst = create_analyst(
+            model_config,
+            newsroom_enabled=settings.newsroom.enabled and not settings.security.air_gap_mode,
+        )
+        print("✅ Analyst initialized")
+    except Exception as e:
+        print(f"⚠️ Analyst initialization failed (will retry on demand): {e}")
+        analyst = None
+
+    yield
+
+    print("👋 Shutting down")
+
+
 app = FastAPI(
     title=settings.app_name,
     description="Autonomous AI Business Analyst - Self-hosted, model-agnostic, always learning",
-    version="0.1.0"
+    version="0.1.0",
+    lifespan=lifespan,
 )
 
-# CORS middleware for development
+# CORS middleware for development.
+# NOTE: allow_credentials=True with allow_origins=["*"] is rejected by browsers,
+# so credentials are only enabled when explicit origins are configured.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configured per deployment
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -40,8 +83,35 @@ app.add_middleware(
 # Include routers
 app.include_router(setup_router, prefix="/api")
 
-# Global analyst instance (initialized after setup)
-analyst_instance = None
+
+# ==================== ANALYST LIFECYCLE ====================
+
+def reinitialize_analyst() -> bool:
+    """
+    (Re)create the analyst from saved configuration.
+    Called after the setup wizard completes so the running
+    instance picks up the user's model choices immediately.
+    """
+    global analyst
+    try:
+        models = db_manager.get_config("models", is_sensitive=False) or {}
+        features = db_manager.get_config("features", is_sensitive=False) or {}
+        air_gap = features.get("air_gap", False)
+        newsroom_enabled = features.get("newsroom", True) and not air_gap
+
+        model_config = {
+            "reasoning": models.get("reasoning") or settings.models.reasoning,
+            "sql": models.get("sql") or settings.models.sql,
+            "embedding": models.get("embedding") or settings.models.embedding,
+            "fallback": models.get("fallback") or settings.models.fallback,
+        }
+        analyst = create_analyst(model_config, newsroom_enabled=newsroom_enabled)
+        print(f"✅ Analyst re-initialized with models: {model_config}")
+        return True
+    except Exception as e:
+        print(f"⚠️ Analyst re-initialization failed: {e}")
+        analyst = None
+        return False
 
 
 # ==================== REQUEST/RESPONSE MODELS ====================
@@ -77,23 +147,31 @@ async def health_check():
 async def analyze(request: AnalysisRequest):
     """
     Run autonomous analysis on a business question.
-    
+
     Returns comprehensive answer with SQL, confidence score, and market context.
     """
+    if analyst is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Analyst is not initialized. Complete the setup wizard first.",
+        )
+
     try:
         result = await analyst.analyze(
             question=request.question,
-            context=request.context
+            context=request.context,
         )
-        
+
         return AnalysisResponse(
             answer=result['answer'],
             confidence=result['confidence'],
             sql_query=result.get('sql'),
             needs_review=result.get('needs_review', False),
-            market_context=result.get('market_context')
+            market_context=result.get('market_context'),
         )
-    
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -118,7 +196,7 @@ async def get_briefing():
     return {
         "findings": [],
         "anomalies": [],
-        "kpi_status": "operational"
+        "kpi_status": "operational",
     }
 
 
@@ -127,7 +205,7 @@ async def list_connectors():
     """List available data connectors."""
     return {
         "available": ["PostgreSQL", "MySQL", "CSV", "Parquet"],
-        "configured": []  # TODO: Load from config
+        "configured": [],  # TODO: Load from config
     }
 
 
@@ -151,16 +229,16 @@ async def websocket_endpoint(websocket: WebSocket):
     """
     await websocket.accept()
     active_connections.append(websocket)
-    
+
     try:
         while True:
             # Keep connection alive, receive heartbeats
             data = await websocket.receive_text()
-            
+
             # Could handle client messages here
             if data == "ping":
                 await websocket.send_text("pong")
-    
+
     except WebSocketDisconnect:
         active_connections.remove(websocket)
 
@@ -169,16 +247,16 @@ async def broadcast_update(message: dict):
     """Broadcast update to all connected clients."""
     if not active_connections:
         return
-    
+
     message_json = json.dumps(message)
     disconnected = []
-    
+
     for conn in active_connections:
         try:
             await conn.send_text(message_json)
-        except:
+        except Exception:
             disconnected.append(conn)
-    
+
     # Clean up disconnected clients
     for conn in disconnected:
         active_connections.remove(conn)
@@ -197,22 +275,8 @@ else:
         return {
             "message": "AI Business Analyst API",
             "docs": "/docs",
-            "status": "Backend running - build frontend with: cd web && npm install && npm run build"
+            "status": "Backend running - build frontend with: cd web && npm install && npm run build",
         }
-
-
-# ==================== STARTUP EVENTS ====================
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize on startup."""
-    print(f"🚀 Starting {settings.app_name}")
-    print(f"📊 Model config: {settings.models}")
-    print(f"🔒 Security mode: air_gap={settings.security.air_gap_mode}, read_only={settings.security.read_only}")
-    print(f"🌐 Newsroom: {'enabled' if settings.newsroom.enabled else 'disabled'}")
-    
-    # Ensure data directory exists
-    os.makedirs(settings.data_dir, exist_ok=True)
 
 
 if __name__ == "__main__":
@@ -221,5 +285,5 @@ if __name__ == "__main__":
         "api.main:app",
         host=settings.host,
         port=settings.port,
-        reload=settings.debug
+        reload=settings.debug,
     )

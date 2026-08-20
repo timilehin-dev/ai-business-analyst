@@ -39,19 +39,40 @@ export default function ChatInterface() {
     setInput('');
     setIsLoading(true);
 
-    // Simulate API call - will be replaced with actual agent call
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: input }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Analysis failed');
+      }
+
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "Based on your question, I analyzed the customer churn data from the last quarter. Here's what I found:\n\n**Key Finding:** Churn increased by 23% in the EMEA region, primarily driven by the pricing change on August 12th.\n\n**Recommendation:** Consider offering a grandfathered rate for existing EMEA customers to reduce churn.",
+        content: data.answer || 'No answer returned.',
         timestamp: new Date(),
-        confidence: 0.87,
-        sqlQuery: `SELECT region, COUNT(*) as churned_customers FROM customers WHERE status = 'churned' AND churn_date >= '2024-01-01' GROUP BY region ORDER BY churned_customers DESC;`
+        confidence: data.confidence ?? 0.5,
+        sqlQuery: data.sql_query || undefined
       };
       setMessages(prev => [...prev, assistantMessage]);
+    } catch (err: any) {
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: `⚠️ ${err.message || 'Something went wrong. Is the backend running?'}`,
+        timestamp: new Date(),
+        confidence: 0
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+    } finally {
       setIsLoading(false);
-    }, 1500);
+    }
   };
 
   const toggleWork = (id: string) => {

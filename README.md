@@ -20,18 +20,22 @@ Traditional BI tools (Tableau, PowerBI) require weeks of setup and certified spe
 
 ## ⚡ Quick Start (5 Minutes)
 
-### Option 1: One-Command Docker Run
+### Option 1: Build & Run with Docker
 
 ```bash
-mkdir ai-analyst-data && cd ai-analyst-data
+git clone https://github.com/timilehin-dev/ai-business-analyst.git
+cd ai-business-analyst
+docker build -t ai-business-analyst .
 docker run -d \
   -p 3000:8000 \
   -v $(pwd)/data:/app/data \
   --name ai-analyst \
-  ghcr.io/timilehin-dev/ai-business-analyst:latest
+  ai-business-analyst
 ```
 
 Then open http://localhost:3000 in your browser.
+
+> Prebuilt images on GHCR are coming soon (see Roadmap).
 
 ### Option 2: Docker Compose (Recommended)
 
@@ -81,10 +85,11 @@ Every answer includes:
 |---------|-------------|
 | **Read-Only by Default** | All database connections are read-only unless explicitly enabled |
 | **Air-Gap Mode** | Disable all internet calls; runs fully offline with local models |
-| **PII Masking** | Automatically redacts sensitive data before sending to LLMs |
-| **Audit Logging** | Every query, reasoning step, and action is logged and exportable |
-| **Row-Level Security** | Define what tables/columns the agent can access |
+| **SQL Validation** | Blocks non-SELECT queries and dangerous operations before execution |
+| **Encrypted Config** | API keys and credentials encrypted at rest with Fernet |
 | **Self-Hosted** | Your data never leaves your infrastructure |
+
+> PII masking, audit log export, and row-level security are on the roadmap (Phase 3).
 
 ## 🧠 Model Support
 
@@ -110,21 +115,23 @@ fallback: ollama-cloud/llama3.1:70b     # If local fails
 
 ### Core Intelligence
 - [x] **Newsroom** - Web search for market/competitor context
-- [x] **Code Sandbox** - Secure Python execution for 100% accurate math
 - [x] **SQL Validator** - Blocks non-SELECT queries by default
-- [x] **Self-Correction** - Auto-fixes failed queries before showing errors
-- [x] **Multi-Agent Debate** - Skeptic + Statistician sub-agents stress-test conclusions
+- [x] **Model Router** - Task-based routing across any LiteLLM provider
+- [ ] **Code Sandbox** - Secure Python execution (framework ready, needs Docker wiring)
+- [ ] **Self-Correction** - Auto-fixes failed queries before showing errors
+- [ ] **Multi-Agent Debate** - Skeptic + Statistician sub-agents stress-test conclusions
 
 ### Memory System
-- [x] **Semantic Memory** - Business glossary, metric definitions
-- [x] **Episodic Memory** - History of all analyses + corrections
-- [x] **Procedural Memory** - Learned playbooks ("always exclude test accounts")
+- [x] **Encrypted Config Store** - API keys and settings encrypted at rest
+- [ ] **Semantic Memory** - Business glossary, metric definitions
+- [ ] **Episodic Memory** - History of all analyses + corrections
+- [ ] **Procedural Memory** - Learned playbooks ("always exclude test accounts")
 - [ ] **Feedback Loop** - 👍/👎 buttons updating knowledge base
 
 ### Deployment Options
 - [x] **SQLite** - Zero-config, runs on laptop/Raspberry Pi
-- [x] **PostgreSQL + pgvector** - Production-scale with vector search
 - [x] **Docker Compose** - Single command deploy
+- [ ] **PostgreSQL + pgvector** - Production-scale with vector search
 - [ ] **Helm Chart** - Kubernetes scaling
 - [ ] **MCP Server** - Expose as service for other AI tools
 
