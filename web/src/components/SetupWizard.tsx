@@ -28,6 +28,25 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     sampleData: true,
   });
 
+  // FastAPI validation errors return detail as an array of objects —
+  // stringify them into a readable message instead of "[object Object]".
+  const apiError = (data: any, fallback: string): string => {
+    const detail = data?.detail;
+    if (Array.isArray(detail)) {
+      return detail.map((e: any) => e.msg || JSON.stringify(e)).join('; ');
+    }
+    return detail || fallback;
+  };
+
+  const dbPayload = () => ({
+    type: config.dbType,
+    host: config.dbHost || null,
+    port: config.dbPort ? Number(config.dbPort) : null,
+    database: config.dbName || null,
+    username: config.dbUser || null,
+    password: config.dbPassword || null,
+  });
+
   const testConnection = async () => {
     setLoading(true);
     setError('');
@@ -36,20 +55,13 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       const response = await fetch('/api/setup/test-database', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: config.dbType,
-          host: config.dbHost,
-          port: config.dbPort,
-          database: config.dbName,
-          username: config.dbUser,
-          password: config.dbPassword,
-        }),
+        body: JSON.stringify(dbPayload()),
       });
       
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.detail || 'Connection failed');
+        throw new Error(apiError(data, 'Connection failed'));
       }
       
       setStep(2);
@@ -71,12 +83,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
         body: JSON.stringify({
           organization_name: 'My Organization',
           database: {
-            type: config.dbType,
-            host: config.dbHost,
-            port: config.dbPort,
-            database: config.dbName,
-            username: config.dbUser,
-            password: config.dbPassword,
+            ...dbPayload(),
             sample_data: config.sampleData,
           },
           ai: {
@@ -99,7 +106,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.detail || 'Setup failed');
+        throw new Error(apiError(data, 'Setup failed'));
       }
       
       onComplete();

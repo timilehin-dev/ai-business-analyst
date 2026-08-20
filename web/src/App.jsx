@@ -1,4 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import SetupWizard from './components/SetupWizard';
 import Dashboard from './components/Dashboard';
 import Briefing from './components/Briefing';
@@ -22,6 +23,35 @@ function App() {
 
 function SetupWizardWrapper() {
   const navigate = useNavigate();
+  const [checking, setChecking] = useState(true);
+
+  // If setup is already complete, skip the wizard entirely
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/setup/status')
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled && data?.is_configured) {
+          navigate('/dashboard', { replace: true });
+        }
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setChecking(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
+
+  if (checking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <p className="text-gray-500">Checking setup status…</p>
+      </div>
+    );
+  }
+
   return <SetupWizard onComplete={() => navigate('/dashboard')} />;
 }
 
