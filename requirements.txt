@@ -8,7 +8,7 @@ pydantic-settings==2.4.0
 # Agent & LLM
 langgraph==0.2.24
 langchain-core==0.3.0
-litellm==1.40.31  # Pinned to avoid pyreqwest-impersonate Rust dependency
+litellm>=1.44.1
 
 # Database & Analytics
 sqlalchemy==2.0.32
