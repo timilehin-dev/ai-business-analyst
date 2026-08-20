@@ -8,11 +8,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     pkg-config \
     libssl-dev \
+    libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Rust toolchain for Rust-based Python packages (pyreqwest-impersonate)
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-ENV PATH /root/.cargo/bin:$PATH
+ENV PATH /root/.cargo/bin:/usr/local/bin
+
+# Configure Rust to use system linker instead of lld
+ENV RUSTFLAGS="-C linker=gcc"
 
 # Install Python dependencies
 COPY requirements.txt .
