@@ -46,11 +46,40 @@ docker-compose up -d
 ```
 
 Open http://localhost:3000 — you'll see a 3-step setup wizard:
-1. **Connect Data** - Choose SQLite (default), PostgreSQL, MySQL, or CSV files
-2. **Pick AI Brain** - Select Ollama (free/local), OpenAI, Anthropic, etc.
+1. **Connect Data** - Choose SQLite (default), PostgreSQL, MySQL, or CSV files. Tick **Load Sample Data** to seed demo tables (customers, products, orders) and ask questions immediately.
+2. **Pick AI Brain** - Select Ollama (free/local), Ollama Cloud, OpenAI, Anthropic, etc.
 3. **Enable Superpowers** - Toggle Newsroom (web search), Code Sandbox (accurate math), Air-Gap mode
 
 That's it. No .env files. No API keys required (unless using cloud models).
+
+## 📥 Data Sources (Knowledge Graph)
+
+The analyst can ingest all sorts of organizational data — not just SQL — into a
+continuously-updated knowledge graph it queries alongside your database:
+
+| Source | How | Sync |
+|--------|-----|------|
+| **CSV / TSV** | Upload in Data Sources | On upload |
+| **DOCX / PDF / TXT / JSON** | Upload in Data Sources | On upload |
+| **Google Drive** | OAuth (read-only) | Manual + every 6h |
+| **Google Sheets** | OAuth (read-only, via Drive export) | Manual + every 6h |
+| **Gmail** | OAuth (read-only, last 90 days) | Manual + every 6h |
+
+Documents are stored in the analyst's own database (never in your business DB),
+deduplicated by source, and browsable/deletable from the **Data Sources** page.
+
+### Connect Google Workspace (5 minutes)
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com) → create a project
+2. Enable APIs: **Google Drive**, **Google Sheets**, **Google Gmail**
+3. **OAuth consent screen** → External → add scopes:
+   `drive.readonly`, `gmail.readonly`, `spreadsheets.readonly`
+4. **Credentials** → Create OAuth client ID → **Web application** → add redirect URI:
+   `http://localhost:3001/api/connectors/google/callback`
+5. In the app: **Data Sources → Google Workspace → Configure** → paste Client ID + Secret
+6. Click **Connect Google Workspace** and approve in the browser
+
+Tokens are stored encrypted and refreshed automatically. Access is read-only.
 
 ## 🎯 What It Does
 
@@ -86,6 +115,7 @@ Every answer includes:
 | **Read-Only by Default** | All database connections are read-only unless explicitly enabled |
 | **Air-Gap Mode** | Disable all internet calls; runs fully offline with local models |
 | **SQL Validation** | Blocks non-SELECT queries and dangerous operations before execution |
+| **No LLM Arithmetic** | The model never computes — SQL runs in the DB, calculations run in the sandbox, and a deterministic grounding guard rejects any report number not present in the data |
 | **Encrypted Config** | API keys and credentials encrypted at rest with Fernet |
 | **Self-Hosted** | Your data never leaves your infrastructure |
 
@@ -115,10 +145,13 @@ fallback: ollama-cloud/llama3.1:70b     # If local fails
 
 ### Core Intelligence
 - [x] **Newsroom** - Web search for market/competitor context
-- [x] **SQL Validator** - Blocks non-SELECT queries by default
+- [x] **SQL Validator** - Blocks non-SELECT queries by default (comment-safe)
 - [x] **Model Router** - Task-based routing across any LiteLLM provider
-- [ ] **Code Sandbox** - Secure Python execution (framework ready, needs Docker wiring)
-- [ ] **Self-Correction** - Auto-fixes failed queries before showing errors
+- [x] **Code Sandbox** - Secure Python execution for calculations (no LLM arithmetic)
+- [x] **Grounding Guard** - Every number in a report is verified against the data; invented figures trigger regeneration
+- [x] **Self-Correction** - Auto-fixes failed queries before showing errors
+- [x] **Data Connectors** - CSV/DOCX/PDF/TXT/JSON upload + Google Drive/Sheets/Gmail (OAuth, continuous sync)
+- [x] **Sample Data** - One-click demo tables for instant testing
 - [ ] **Multi-Agent Debate** - Skeptic + Statistician sub-agents stress-test conclusions
 
 ### Memory System

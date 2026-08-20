@@ -20,6 +20,8 @@ from agent.memory.database import db_manager
 
 # Import route modules
 from api.routes.setup import router as setup_router
+from api.routes.connectors import router as connectors_router
+from api.routes.briefing import router as briefing_router
 
 # ==================== APP INITIALIZATION ====================
 
@@ -62,9 +64,64 @@ async def lifespan(app: FastAPI):
     if db_manager.get_config("setup_complete", is_sensitive=False):
         reinitialize_analyst()
 
+    # Continuous data sync: keep Drive/Gmail/Sheets knowledge fresh.
+    # Runs every 6 hours while the app is up; connectors that are not
+    # configured are skipped. (APScheduler replaces this with the Sense
+    # loop's nightly briefing in a later build.)
+    sync_task = asyncio.create_task(continuous_sync_loop())
+
+    # Sense loop: nightly briefing with anomaly detection.
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from agent.sense.briefing import generate_briefing
+
+    scheduler = AsyncIOScheduler(timezone=settings.briefing_timezone)
+
+    async def run_nightly_briefing():
+        global analyst
+        if analyst is None:
+            print("🌙 Nightly briefing skipped: analyst not initialized")
+            return
+        try:
+            briefing = await generate_briefing(analyst)
+            print(f"🌙 Nightly briefing stored: {briefing['status']} "
+                  f"({len(briefing['findings'])} findings)")
+            await broadcast_update({"type": "briefing", "briefing": briefing})
+        except Exception as e:
+            print(f"⚠️ Nightly briefing failed: {e}")
+
+    scheduler.add_job(
+        run_nightly_briefing,
+        "cron",
+        hour=settings.briefing_hour,
+        minute=0,
+        id="nightly_briefing",
+        replace_existing=True,
+    )
+    scheduler.start()
+    print(f"🌙 Sense loop scheduled: daily {settings.briefing_hour:02d}:00 ({settings.briefing_timezone})")
+
     yield
 
+    sync_task.cancel()
+    scheduler.shutdown(wait=False)
     print("👋 Shutting down")
+
+
+async def continuous_sync_loop(interval_hours: float = 6.0):
+    """Background task: sync all configured connectors on a schedule."""
+    from agent.connectors import sync_all
+
+    while True:
+        try:
+            results = await sync_all()
+            for cid, r in results.items():
+                if r.errors:
+                    print(f"🔄 Sync {cid}: {r.message}")
+                else:
+                    print(f"🔄 Sync {cid}: {r.synced} items")
+        except Exception as e:
+            print(f"⚠️ Continuous sync failed: {e}")
+        await asyncio.sleep(interval_hours * 3600)
 
 
 app = FastAPI(
@@ -87,6 +144,8 @@ app.add_middleware(
 
 # Include routers
 app.include_router(setup_router, prefix="/api")
+app.include_router(connectors_router, prefix="/api")
+app.include_router(briefing_router, prefix="/api")
 
 
 # ==================== ANALYST LIFECYCLE ====================
@@ -211,35 +270,6 @@ async def submit_feedback(request: FeedbackRequest):
     # TODO: Implement memory storage for feedback
     # For now, just acknowledge receipt
     return {"status": "received", "message": "Feedback recorded for learning"}
-
-
-@app.get("/api/briefing")
-async def get_briefing():
-    """
-    Get proactive briefing with overnight findings and anomalies.
-    TODO: Implement scheduled analysis engine.
-    """
-    return {
-        "findings": [],
-        "anomalies": [],
-        "kpi_status": "operational",
-    }
-
-
-@app.get("/api/connectors")
-async def list_connectors():
-    """List available data connectors."""
-    return {
-        "available": ["PostgreSQL", "MySQL", "CSV", "Parquet"],
-        "configured": [],  # TODO: Load from config
-    }
-
-
-@app.post("/api/connectors/test")
-async def test_connector(connection_string: str, connector_type: str):
-    """Test database connection."""
-    # TODO: Implement connection testing
-    return {"success": True, "message": "Connection successful"}
 
 
 # ==================== WEBSOCKET FOR REAL-TIME UPDATES ====================

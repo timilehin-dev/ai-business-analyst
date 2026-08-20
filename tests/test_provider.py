@@ -9,7 +9,10 @@ class TestPrefixModelName:
         assert prefix_model_name("qwen2.5:7b", "ollama-local") == "ollama/qwen2.5:7b"
 
     def test_ollama_cloud(self):
-        assert prefix_model_name("qwen2.5:7b", "ollama-cloud") == "ollama/qwen2.5:7b"
+        # Ollama Cloud exposes an OpenAI-compatible API at https://ollama.com/v1,
+        # so it must route through litellm's openai provider (chat/completions),
+        # NOT the native ollama provider (which would hit /v1/api/generate).
+        assert prefix_model_name("qwen2.5:7b", "ollama-cloud") == "openai/qwen2.5:7b"
 
     def test_openai(self):
         assert prefix_model_name("gpt-4o", "openai") == "openai/gpt-4o"

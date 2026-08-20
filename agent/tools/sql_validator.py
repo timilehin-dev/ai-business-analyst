@@ -3,8 +3,21 @@ SQL Validator Tool.
 Ensures only safe, read-only SQL queries are executed.
 Prevents accidental data modification and SQL injection.
 """
+import re
 import sqlvalidator
 from typing import Optional, Tuple
+
+
+def strip_sql_comments(sql: str) -> str:
+    """
+    Remove SQL comments (/* ... */ and -- line comments) before analysis.
+
+    The LLM is instructed to annotate queries with comments, so validation
+    must not reject a query just because it starts with a comment block.
+    """
+    sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.S)
+    sql = re.sub(r"--[^\n]*", " ", sql)
+    return sql
 
 
 class SQLValidatorTool:
@@ -33,8 +46,12 @@ class SQLValidatorTool:
         if not sql or not sql.strip():
             return False, "Empty SQL query"
 
+        # Strip comments so a query starting with /* ... */ or -- is analyzed
+        # on its actual statement, not its annotation.
+        clean = strip_sql_comments(sql)
+
         # Check for dangerous keywords
-        sql_upper = sql.upper().strip()
+        sql_upper = clean.upper().strip()
         
         # Block any statement that isn't a SELECT
         if not sql_upper.startswith("SELECT") and not sql_upper.startswith("WITH"):
@@ -50,7 +67,7 @@ class SQLValidatorTool:
 
         # Try to parse with sqlvalidator
         try:
-            parsed = sqlvalidator.parse(sql)
+            parsed = sqlvalidator.parse(clean)
             if not parsed.is_valid():
                 return False, f"SQL syntax error: {parsed.errors}"
         except Exception as e:
@@ -60,9 +77,9 @@ class SQLValidatorTool:
             pass
 
         # Additional heuristic checks
-        if "--" in sql or ";" in sql.rstrip().rstrip(";").split("--")[0]:
+        if "--" in clean or ";" in clean.rstrip().rstrip(";").split("--")[0]:
             # Allow comments but check for multiple statements
-            statements = [s.strip() for s in sql.split(";") if s.strip()]
+            statements = [s.strip() for s in clean.split(";") if s.strip()]
             if len(statements) > 1:
                 # Check if all are SELECTs
                 for stmt in statements:

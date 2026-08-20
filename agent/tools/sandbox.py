@@ -62,8 +62,11 @@ print(output)
         if self.use_local_docker and self.client:
             return await self._execute_in_docker(wrapped_code, install_cmd)
         else:
-            # Fallback: Execute locally (less secure, but works without Docker)
-            return await self._execute_local(wrapped_code)
+            # Fallback: Execute locally (less secure, but works without Docker).
+            # The local path captures stdout itself, so it gets the RAW code —
+            # the wrapper needs `import sys` which the restricted namespace
+            # deliberately does not allow.
+            return await self._execute_local(code)
 
     async def _execute_in_docker(self, code: str, install_cmd: str) -> Dict[str, Any]:
         """Execute code in a Docker container."""
@@ -94,19 +97,49 @@ print(output)
     async def _execute_local(self, code: str) -> Dict[str, Any]:
         """Fallback local execution (use only when Docker unavailable)."""
         try:
-            # Create a restricted namespace
-            restricted_globals = {
-                "__builtins__": __builtins__,
-                "print": print,
-                "len": len,
-                "range": range,
-                "sum": sum,
-                "min": min,
-                "max": max,
-                "abs": abs,
-                "round": round,
+            # Restricted namespace: only whitelisted builtins + safe stdlib.
+            # NOTE: this is a numeric-analysis sandbox, not full isolation —
+            # the Docker path is the real security boundary when available.
+            import builtins
+            import math
+            import json
+            import statistics
+            import datetime
+
+            safe_builtins = {
+                name: getattr(builtins, name)
+                for name in (
+                    "print", "len", "range", "sum", "min", "max", "abs", "round",
+                    "int", "float", "str", "bool", "dict", "list", "tuple", "set",
+                    "sorted", "enumerate", "zip", "map", "filter", "any", "all",
+                    "isinstance", "type", "repr", "format", "divmod", "pow",
+                    "complex", "hex", "oct", "bin", "True", "False", "None",
+                )
             }
-            
+
+            # Guarded import: only whitelisted analysis modules may be imported.
+            # The generated code legitimately uses math/statistics/json, but
+            # os/subprocess/socket/etc. must stay unreachable.
+            allowed_imports = {"math", "statistics", "json", "datetime", "pandas", "numpy"}
+
+            def _safe_import(name, globals=None, locals=None, fromlist=(), level=0):
+                base = name.split(".")[0]
+                if base not in allowed_imports:
+                    raise ImportError(
+                        f"Module '{name}' is not allowed in the analysis sandbox"
+                    )
+                return __import__(name, globals, locals, fromlist, level)
+
+            safe_builtins["__import__"] = _safe_import
+
+            restricted_globals = {
+                "__builtins__": safe_builtins,
+                "math": math,
+                "json": json,
+                "statistics": statistics,
+                "datetime": datetime,
+            }
+
             # Try to import safe libraries
             try:
                 import pandas as pd
@@ -115,13 +148,13 @@ print(output)
                 restricted_globals['np'] = np
             except ImportError:
                 pass
-            
+
             # Capture output
             import io
             import sys
             old_stdout = sys.stdout
             sys.stdout = buffer = io.StringIO()
-            
+
             try:
                 exec(code, restricted_globals)
                 output = buffer.getvalue()
@@ -130,7 +163,7 @@ print(output)
                 return {"success": False, "output": buffer.getvalue(), "error": str(e)}
             finally:
                 sys.stdout = old_stdout
-                
+
         except Exception as e:
             return {"success": False, "output": "", "error": f"Local execution failed: {str(e)}"}
 

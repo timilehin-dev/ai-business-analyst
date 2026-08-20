@@ -1,130 +1,190 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, TrendingUp, AlertTriangle, CheckCircle, ArrowRight, Plus } from 'lucide-react';
+import { Activity, TrendingUp, TrendingDown, AlertTriangle, CheckCircle, Sparkles, RefreshCw } from 'lucide-react';
+import Nav from './Nav';
 
-const mockBriefings = [
-  {
-    id: 1,
-    type: 'critical',
-    title: 'Churn Spike Detected in EMEA',
-    summary: 'Churn increased by 23% in the EMEA segment over the last 48 hours. Root cause traced to pricing changes on Aug 12.',
-    timestamp: '2 hours ago',
-    metric: 'Churn Rate',
-    change: '+23%',
-    status: 'investigating'
-  },
-  {
-    id: 2,
-    type: 'positive',
-    title: 'Q3 Revenue Tracking Above Forecast',
-    summary: 'Revenue is tracking 8% above forecast driven by enterprise renewals. On track to beat Q3 targets.',
-    timestamp: '5 hours ago',
-    metric: 'Revenue',
-    change: '+8%',
-    status: 'verified'
-  },
-  {
-    id: 3,
-    type: 'neutral',
-    title: 'Data Freshness Warning',
-    summary: 'Stripe connector has not synced new data in 6 hours. Automated retry initiated.',
-    timestamp: '1 hour ago',
-    metric: 'Data Health',
-    change: '-6h',
-    status: 'auto-fixing'
-  }
-];
+interface Finding {
+  table: string;
+  metric: string;
+  current: number;
+  previous: number;
+  change_pct: number | null;
+  direction: string;
+  severity: string;
+  window: string;
+}
 
-const mockKPIs = [
-  { name: 'Total Revenue', value: '$2.4M', change: '+12%', trend: 'up' },
-  { name: 'Active Users', value: '14,205', change: '+5%', trend: 'up' },
-  { name: 'Churn Rate', value: '2.1%', change: '-0.4%', trend: 'down' },
-  { name: 'CAC', value: '$450', change: '+2%', trend: 'up' },
-];
+interface Briefing {
+  id: number;
+  generated_at: string;
+  summary: string;
+  findings: Finding[];
+  status: string;
+}
 
 export default function Dashboard() {
-  const [briefings, setBriefings] = useState(mockBriefings);
-  const [kpis, setKpis] = useState(mockKPIs);
+  const [briefing, setBriefing] = useState<Briefing | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState('');
 
-  const getIcon = (type) => {
-    switch (type) {
-      case 'critical': return <AlertTriangle className="h-5 w-5 text-red-500" />;
-      case 'positive': return <CheckCircle className="h-5 w-5 text-green-500" />;
-      default: return <Activity className="h-5 w-5 text-yellow-500" />;
+  const load = async () => {
+    try {
+      const res = await fetch('/api/briefing');
+      const data = await res.json();
+      setBriefing(data.briefing);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'verified': return 'bg-green-100 text-green-800';
-      case 'investigating': return 'bg-blue-100 text-blue-800';
-      case 'auto-fixing': return 'bg-yellow-100 text-yellow-800';
-      default: return 'bg-gray-100 text-gray-800';
+  useEffect(() => { load(); }, []);
+
+  const generateNow = async () => {
+    setGenerating(true);
+    setError('');
+    try {
+      const res = await fetch('/api/briefing/generate', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Generation failed');
+      setBriefing(data.briefing);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setGenerating(false);
     }
+  };
+
+  const getIcon = (f: Finding) => {
+    if (f.severity === 'critical') return <AlertTriangle className="h-5 w-5 text-red-500" />;
+    if (f.direction === 'up') return <TrendingUp className="h-5 w-5 text-green-500" />;
+    if (f.direction === 'down') return <TrendingDown className="h-5 w-5 text-red-500" />;
+    return <Activity className="h-5 w-5 text-yellow-500" />;
+  };
+
+  const formatNumber = (n: number) => {
+    if (Math.abs(n) >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  };
+
+  const formatChange = (f: Finding) => {
+    if (f.change_pct === null) return 'new activity';
+    const sign = f.change_pct > 0 ? '+' : '';
+    return `${sign}${f.change_pct.toFixed(1)}%`;
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Good Morning, Team</h1>
-          <p className="text-gray-500">Here is what I found while you were sleeping.</p>
-        </div>
-        <button className="gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center">
-          <Plus className="h-4 w-4" /> New Analysis
-        </button>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {kpis.map((kpi) => (
-          <div key={kpi.name} className="border rounded-lg bg-white shadow-sm">
-            <div className="flex flex-row items-center justify-between space-y-0 p-6 pb-2">
-              <span className="text-sm font-medium">{kpi.name}</span>
-              {kpi.trend === 'up' ? (
-                <TrendingUp className="h-4 w-4 text-gray-400" />
-              ) : (
-                <Activity className="h-4 w-4 text-gray-400" />
-              )}
-            </div>
-            <div className="p-6 pt-0">
-              <div className="text-2xl font-bold">{kpi.value}</div>
-              <p className={kpi.change.startsWith('+') ? 'text-green-600 text-xs' : 'text-red-600 text-xs'}>{
-                kpi.change} from last month
-              </p>
-            </div>
+    <div className="min-h-screen bg-gray-50">
+      <Nav />
+      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Good Morning, Team</h1>
+            <p className="text-gray-500">Here is what I found while you were sleeping.</p>
           </div>
-        ))}
-      </div>
+          <button
+            onClick={generateNow}
+            disabled={generating}
+            className="gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center disabled:opacity-50"
+          >
+            {generating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {generating ? 'Analyzing...' : 'Generate Briefing Now'}
+          </button>
+        </div>
 
-      <div className="space-y-4">
-        <h2 className="text-xl font-semibold">Overnight Briefing</h2>
-        {briefings.map((brief) => (
-          <div key={brief.id} className="hover:shadow-md transition-shadow cursor-pointer border rounded-lg bg-white">
-            <div className="flex flex-row items-start justify-between space-y-0 p-6">
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center space-x-3">
-                  {getIcon(brief.type)}
-                  <div>
-                    <span className="text-lg font-semibold">{brief.title}</span>
-                    <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
-                      <span>{brief.timestamp}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full ${getStatusColor(brief.status)}`}>
-                        {brief.status.replace('-', ' ')}
+        {error && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>
+        )}
+
+        {loading ? (
+          <div className="flex items-center justify-center py-20 text-gray-400">
+            <RefreshCw className="h-5 w-5 animate-spin mr-2" /> Loading briefing...
+          </div>
+        ) : !briefing ? (
+          <div className="border rounded-lg bg-white shadow-sm p-12 text-center">
+            <CheckCircle className="h-10 w-10 text-gray-300 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-700">No briefing yet</h2>
+            <p className="text-gray-500 mt-2 max-w-md mx-auto">
+              The Sense loop runs automatically every night at 6 AM — it scans your
+              database for anomalies and writes a briefing. Click "Generate Briefing Now"
+              to run it immediately.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* KPI cards from the latest findings */}
+            {briefing.findings.length > 0 && (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                {briefing.findings.slice(0, 4).map((f, i) => (
+                  <div key={i} className="border rounded-lg bg-white shadow-sm">
+                    <div className="flex flex-row items-center justify-between space-y-0 p-6 pb-2">
+                      <span className="text-sm font-medium capitalize">
+                        {f.metric === '__row_count__' ? `${f.table} rows` : f.metric.replace(/_/g, ' ')}
                       </span>
+                      {getIcon(f)}
+                    </div>
+                    <div className="p-6 pt-0">
+                      <div className="text-2xl font-bold">{formatNumber(f.current)}</div>
+                      <p className={`text-xs ${f.direction === 'down' && f.severity === 'critical' ? 'text-red-600' : 'text-green-600'}`}>
+                        {formatChange(f)} vs prior period
+                      </p>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
-              <ArrowRight className="h-5 w-5 text-gray-400" />
-            </div>
-            <div className="p-6 pt-0">
-              <p className="text-gray-600">{brief.summary}</p>
-              <div className="mt-4 flex gap-2">
-                <button className="text-sm px-4 py-2 border rounded-md hover:bg-gray-50">View Full Analysis</button>
-                <button className="text-sm px-4 py-2 text-gray-600 hover:text-gray-900">Ask Follow-up</button>
+            )}
+
+            {/* Briefing summary */}
+            <div className="border rounded-lg bg-white shadow-sm p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-semibold">Overnight Briefing</h2>
+                <span className="text-xs text-gray-400">
+                  {briefing.generated_at ? new Date(briefing.generated_at).toLocaleString() : ''}
+                </span>
+              </div>
+              <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
+                {briefing.summary}
               </div>
             </div>
-          </div>
-        ))}
+
+            {/* Findings detail */}
+            {briefing.findings.length > 0 && (
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold">Detected Anomalies</h2>
+                {briefing.findings.map((f, i) => (
+                  <div key={i} className="hover:shadow-md transition-shadow border rounded-lg bg-white">
+                    <div className="flex flex-row items-start justify-between space-y-0 p-6">
+                      <div className="flex items-center space-x-3">
+                        {getIcon(f)}
+                        <div>
+                          <span className="text-lg font-semibold capitalize">
+                            {f.metric === '__row_count__' ? `${f.table} volume` : `${f.table} · ${f.metric.replace(/_/g, ' ')}`}
+                          </span>
+                          <div className="flex items-center gap-2 mt-1 text-sm text-gray-500">
+                            <span>{f.window}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              f.severity === 'critical' ? 'bg-red-100 text-red-800' : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {f.severity}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-xl font-bold">{formatNumber(f.current)}</div>
+                        <div className="text-xs text-gray-500">vs {formatNumber(f.previous)}</div>
+                        <div className={`text-sm font-medium ${f.direction === 'down' ? 'text-red-600' : 'text-green-600'}`}>
+                          {formatChange(f)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
       </div>
     </div>
   );

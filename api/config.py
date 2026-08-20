@@ -63,6 +63,10 @@ class Settings(BaseSettings):
     database: DatabaseConfig = DatabaseConfig()
     security: SecurityConfig = SecurityConfig()
     newsroom: NewsroomConfig = NewsroomConfig()
+
+    # Sense loop (nightly briefing)
+    briefing_hour: int = 6
+    briefing_timezone: str = "UTC"
     
     # Server
     host: str = "0.0.0.0"

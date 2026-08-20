@@ -3,6 +3,7 @@ import SetupWizard from './components/SetupWizard';
 import Dashboard from './components/Dashboard';
 import Briefing from './components/Briefing';
 import ChatInterface from './components/ChatInterface';
+import DataSources from './components/DataSources';
 
 function App() {
   return (
@@ -13,6 +14,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/briefing" element={<Briefing />} />
         <Route path="/chat" element={<ChatInterface />} />
+        <Route path="/data" element={<DataSources />} />
       </Routes>
     </Router>
   );

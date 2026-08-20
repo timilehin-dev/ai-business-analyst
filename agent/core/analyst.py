@@ -35,7 +35,10 @@ class AgentState(TypedDict):
     sql_query: Optional[str]
     python_code: Optional[str]  # For code sandbox execution
     execution_result: Optional[Any]
+    computed_results: Optional[Any]  # Exact numbers from executed code
     validation_errors: List[str]
+    grounding_errors: List[str]  # Numbers in report not found in data
+    grounding_count: int  # Bounded regeneration attempts
 
     # Output
     analysis_draft: str
@@ -121,6 +124,7 @@ Return JSON with this structure:
     return {
         'plan': plan_data.get('plan', ''),
         'search_queries': plan_data.get('search_queries', []),
+        'needs_code_execution': plan_data.get('needs_code_execution', False),
         'business_context': state.get('business_context', '')
     }
 
@@ -295,10 +299,12 @@ async def reporter_node(state: AgentState, model_router: ModelRouter) -> AgentSt
     messages = state['messages']
     last_message = messages[-1]['content']
     execution_result = state.get('execution_result')
+    computed_results = state.get('computed_results')
     market_context = state.get('market_context', '')
     confidence = state.get('confidence_score', 0.5)
     validation_errors = state.get('validation_errors', [])
-    
+    grounding_errors = state.get('grounding_errors', [])
+
     system_prompt = f"""You are a senior business analyst preparing a report.
 
 CONTEXT:
@@ -307,8 +313,11 @@ CONTEXT:
 - Confidence Level: {confidence:.1%}
 - Validation Issues: {', '.join(validation_errors) if validation_errors else 'None'}
 
-DATA RESULTS:
+DATA RESULTS (SQL output):
 {json.dumps(execution_result, default=str) if execution_result else 'No data'}
+
+COMPUTED RESULTS (exact, from executed code — trust these completely):
+{json.dumps(computed_results, default=str) if computed_results else 'None'}
 
 GUIDELINES:
 1. Start with a clear executive summary
@@ -317,9 +326,22 @@ GUIDELINES:
 4. Be transparent about confidence levels and limitations
 5. Provide actionable recommendations
 6. If confidence is low or issues exist, clearly state them
+7. CRITICAL: Never compute, sum, derive, or convert numbers yourself.
+   Quote figures EXACTLY as they appear in DATA RESULTS or COMPUTED RESULTS.
+   If a figure is not in the data, do not invent it — say the breakdown instead.
+   LLM arithmetic is unreliable; every number you write must exist verbatim
+   in the data above.
 
 FORMAT:
 Use markdown with clear sections, bullet points, and bold text for emphasis.
+"""
+
+    if grounding_errors:
+        system_prompt += f"""
+GROUNDING CHECK FAILED — your previous report contained numbers that do not
+appear in the data: {grounding_errors}
+Rewrite the report using ONLY numbers from DATA RESULTS and COMPUTED RESULTS.
+Remove or rephrase every figure that is not in the data. Do not recompute anything.
 """
     
     response = await model_router.complete(
@@ -335,6 +357,176 @@ Use markdown with clear sections, bullet points, and bold text for emphasis.
         'final_response': response,
         'analysis_draft': response
     }
+
+
+async def code_generator_node(state: AgentState, model_router: ModelRouter) -> AgentState:
+    """
+    Write Python code that computes derived metrics from the SQL results.
+
+    The model NEVER computes numbers itself — it writes code that does.
+    The code embeds the SQL results as a literal and prints a single
+    RESULT:<json> line, which the executor parses as exact numbers.
+    """
+    execution_result = state.get('execution_result')
+    question = state['messages'][-1]['content']
+
+    system_prompt = f"""You are a senior data analyst. The SQL query returned these results:
+
+{json.dumps(execution_result, default=str) if execution_result else 'No data'}
+
+The user's question requires calculations beyond what the SQL returned
+(percentages, growth rates, statistics, forecasts, comparisons, ...).
+
+Write Python code that:
+1. Embeds the data above directly in the code as a Python literal
+2. Computes every derived metric needed to answer: {question}
+3. Prints exactly one line at the end: RESULT:{{json}} where json is a
+   JSON object of the computed values (numbers only, rounded to 2 decimals)
+
+RULES:
+- Use ONLY the stdlib modules math, statistics, json (they are available)
+- No network, no file access, no other imports
+- The code must run standalone (data embedded, no external input)
+- Print ONLY the RESULT line — no other output
+
+Write ONLY the code, no explanations:"""
+
+    response = await model_router.complete(
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Write the calculation code for: {question}"}
+        ],
+        task_type='reasoning',
+        temperature=0.1
+    )
+
+    code = response.strip()
+    if "```python" in code:
+        code = code.split("```python")[1].split("```")[0].strip()
+    elif "```" in code:
+        code = code.split("```")[1].split("```")[0].strip()
+
+    return {'python_code': code}
+
+
+async def code_executor_node(state: AgentState, sandbox: CodeSandboxTool) -> AgentState:
+    """
+    Execute the generated code in the sandbox and parse the RESULT line.
+    Only executed output becomes computed_results — never model tokens.
+    """
+    code = state.get('python_code', '')
+    if not code:
+        return {
+            'computed_results': None,
+            'validation_errors': state.get('validation_errors', []) + ['No code generated for calculation'],
+        }
+
+    result = await sandbox.execute(code)
+    computed = None
+    if result.get('success'):
+        for line in (result.get('output') or '').splitlines():
+            if line.startswith('RESULT:'):
+                try:
+                    computed = json.loads(line[len('RESULT:'):].strip())
+                except json.JSONDecodeError:
+                    continue
+                break
+
+    errors = list(state.get('validation_errors', []))
+    if computed is None:
+        errors.append(f'Code execution produced no parseable RESULT: {result.get("error") or result.get("output", "")[:200]}')
+
+    return {
+        'computed_results': computed,
+        'validation_errors': errors,
+    }
+
+
+def grounding_node(state: AgentState) -> AgentState:
+    """
+    DETERMINISTIC guard (no LLM): every number in the report must appear
+    in the data (SQL results, computed results, confidence). Any number
+    the model invented is flagged so the reporter can regenerate.
+    """
+    report = state.get('final_response', '')
+    ungrounded = find_ungrounded_numbers(
+        report,
+        data=state.get('execution_result'),
+        computed=state.get('computed_results'),
+        confidence=state.get('confidence_score', 0.0),
+        sql=state.get('sql_query', ''),
+    )
+    return {
+        'grounding_errors': ungrounded,
+        'grounding_count': state.get('grounding_count', 0) + (1 if ungrounded else 0),
+    }
+
+
+# ==================== GROUNDING (DETERMINISTIC NUMBER CHECK) ====================
+
+import re as _re
+
+_NUM_RE = _re.compile(r'-?\d[\d,]*(?:\.\d+)?')
+_DATE_RE = _re.compile(
+    r'\d{4}-\d{1,2}-\d{1,2}|\d{1,2}:\d{2}(?::\d{2})?|\d{1,2}/\d{1,2}/\d{4}'
+)
+
+
+def _extract_numbers(text: str) -> List[float]:
+    """All numeric quantities in text, skipping date/time tokens."""
+    text = _DATE_RE.sub(' ', text or '')
+    out = []
+    for m in _NUM_RE.finditer(text):
+        s = m.group().replace(',', '')
+        try:
+            out.append(float(s))
+        except ValueError:
+            continue
+    return out
+
+
+def _collect_allowed_numbers(data, computed, confidence: float, sql: str) -> set:
+    """Every number that legitimately appears in the analysis data."""
+    allowed = set()
+
+    def add(v):
+        if isinstance(v, bool):
+            return
+        if isinstance(v, (int, float)):
+            allowed.add(float(v))
+        elif isinstance(v, (list, tuple)):
+            for x in v:
+                add(x)
+        elif isinstance(v, dict):
+            for x in v.values():
+                add(x)
+
+    add(data)
+    add(computed)
+    allowed.add(float(confidence))
+    allowed.add(round(confidence * 100, 2))  # "90.0%" form
+    for n in _extract_numbers(sql):  # numbers the model may quote from the query
+        allowed.add(n)
+    return allowed
+
+
+def find_ungrounded_numbers(
+    report: str,
+    data=None,
+    computed=None,
+    confidence: float = 0.0,
+    sql: str = '',
+) -> List[float]:
+    """Return numbers in the report that do not exist in the data."""
+    allowed = _collect_allowed_numbers(data, computed, confidence, sql)
+    ungrounded = []
+    for n in _extract_numbers(report):
+        # Skip calendar years (dates are not arithmetic claims).
+        if n.is_integer() and 1900 <= n <= 2100:
+            continue
+        if n not in allowed:
+            ungrounded.append(n)
+    return ungrounded
 
 
 # ==================== GRAPH CONSTRUCTION ====================
@@ -361,7 +553,10 @@ def create_agent_graph(
     workflow.add_node("sql_generator", functools.partial(sql_generator_node, model_router=model_router))
     workflow.add_node("executor", functools.partial(executor_node, sql_validator=sql_validator, db_conn=db_conn))
     workflow.add_node("validator", functools.partial(validator_node, model_router=model_router))
+    workflow.add_node("code_generator", functools.partial(code_generator_node, model_router=model_router))
+    workflow.add_node("code_executor", functools.partial(code_executor_node, sandbox=CodeSandboxTool()))
     workflow.add_node("reporter", functools.partial(reporter_node, model_router=model_router))
+    workflow.add_node("grounding", grounding_node)
     
     # Define edges
     workflow.set_entry_point("planner")
@@ -402,24 +597,46 @@ def create_agent_graph(
         }
     )
     
-    # Validator → Reporter (or escalate)
+    # Validator → code path (calculations) or reporter, or escalate
     def route_after_validator(state: AgentState) -> str:
         if state.get('needs_human_escalation', False):
             return "escalate"
+        if state.get('needs_code_execution', False):
+            return "code_generator"
         return "reporter"
-    
+
     workflow.add_conditional_edges(
         source="validator",
         path=route_after_validator,
         path_map={
             "reporter": "reporter",
+            "code_generator": "code_generator",
             "escalate": END  # Could add escalation node later
         }
     )
-    
-    # Reporter → End
-    workflow.add_edge("reporter", END)
-    
+
+    # Code path: generate → execute → report
+    workflow.add_edge("code_generator", "code_executor")
+    workflow.add_edge("code_executor", "reporter")
+
+    # Reporter → Grounding (deterministic number check)
+    workflow.add_edge("reporter", "grounding")
+
+    # Grounding → regenerate report (bounded) or end
+    def route_after_grounding(state: AgentState) -> str:
+        if state.get('grounding_errors') and state.get('grounding_count', 0) < 2:
+            return "reporter"
+        return "end"
+
+    workflow.add_conditional_edges(
+        source="grounding",
+        path=route_after_grounding,
+        path_map={
+            "reporter": "reporter",
+            "end": END,
+        }
+    )
+
     return workflow.compile()
 
 
@@ -483,11 +700,15 @@ class AutonomousAnalyst:
             'sql_query': None,
             'python_code': None,
             'execution_result': None,
+            'computed_results': None,
             'validation_errors': [],
+            'grounding_errors': [],
+            'grounding_count': 0,
             'analysis_draft': '',
             'final_response': '',
             'confidence_score': 0.0,
             'needs_human_escalation': False,
+            'needs_code_execution': False,
             'iteration_count': 0,
             'max_iterations': 3
         }
@@ -499,6 +720,7 @@ class AutonomousAnalyst:
             'confidence': result['confidence_score'],
             'sql': result.get('sql_query'),
             'data': result.get('execution_result'),
+            'computed': result.get('computed_results'),
             'market_context': result.get('market_context'),
             'needs_review': result.get('needs_human_escalation', False)
         }

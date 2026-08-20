@@ -25,6 +25,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     newsroomEnabled: true,
     codeSandboxEnabled: true,
     airGapMode: false,
+    sampleData: true,
   });
 
   const testConnection = async () => {
@@ -76,6 +77,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             database: config.dbName,
             username: config.dbUser,
             password: config.dbPassword,
+            sample_data: config.sampleData,
           },
           ai: {
             provider: config.aiProvider,
@@ -225,10 +227,28 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                 )}
                 
                 {config.dbType === 'sqlite' && (
-                  <div className="col-span-2">
+                  <div className="col-span-2 space-y-3">
                     <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
                       SQLite will be created automatically. Perfect for testing and small teams.
                       You can migrate to PostgreSQL later.
+                    </div>
+                    <div className="flex items-center justify-between p-4 border rounded-lg">
+                      <div>
+                        <label className="font-medium">Load Sample Data</label>
+                        <p className="text-sm text-gray-500">
+                          Seed demo tables (customers, products, orders) so you can ask
+                          questions immediately — no setup needed.
+                        </p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={config.sampleData}
+                          onChange={(e) => setConfig({ ...config, sampleData: e.target.checked })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                      </label>
                     </div>
                   </div>
                 )}

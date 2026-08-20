@@ -26,6 +26,7 @@ class DatabaseConfig(BaseModel):
     username: Optional[str] = None
     password: Optional[str] = None
     connection_string: Optional[str] = None  # For direct connection string input
+    sample_data: bool = Field(default=False, description="Seed demo tables for instant testing")
 
 
 class AIProviderConfig(BaseModel):
@@ -199,6 +200,12 @@ async def complete_setup(request: SetupRequest) -> SetupResponse:
         if request.database.type == "sqlite":
             db_url = f"sqlite:///{db_manager.data_dir}/analyst.db"
         db_manager.save_config("database_url", db_url, is_sensitive=False)
+
+        # 2b. Seed sample data if requested (demo tables for instant testing)
+        if request.database.sample_data:
+            from agent.connectors.sample_data import seed_sample_data
+            seed_result = seed_sample_data(db_url)
+            print(f"📊 Sample data: {seed_result['message']}")
 
         # 3. Store AI provider config (API keys encrypted)
         db_manager.save_config("ai_provider", request.ai.provider, is_sensitive=False)

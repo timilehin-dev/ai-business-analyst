@@ -126,8 +126,11 @@ def prefix_model_name(model_name: str, provider: str) -> str:
     if "/" in model_name:
         return model_name
     prefixes = {
-        "ollama-local": "ollama",
-        "ollama-cloud": "ollama",
+        "ollama-local": "ollama",  # native /api/chat + /api/generate endpoints
+        # Ollama Cloud exposes an OpenAI-compatible API at https://ollama.com/v1,
+        # so it must route through litellm's openai provider (chat/completions),
+        # NOT the native ollama provider (which would hit /v1/api/generate).
+        "ollama-cloud": "openai",
         "openai": "openai",
         "anthropic": "anthropic",
         "custom": "openai",  # custom OpenAI-compatible endpoints
