@@ -1,15 +1,21 @@
 import { useState } from 'react';
-import { CheckCircle2, Loader2, Database, Brain, Sparkles } from "lucide-react";
+import { CheckCircle2, Loader2, Database, Brain, Sparkles, ArrowLeft, ArrowRight } from 'lucide-react';
 
 interface SetupWizardProps {
   onComplete: () => void;
 }
 
+const steps = [
+  { n: 1, label: 'Connect data' },
+  { n: 2, label: 'Choose AI' },
+  { n: 3, label: 'Enable features' },
+];
+
 export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+
   const [config, setConfig] = useState({
     dbType: 'sqlite',
     dbHost: '',
@@ -50,20 +56,20 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const testConnection = async () => {
     setLoading(true);
     setError('');
-    
+
     try {
       const response = await fetch('/api/setup/test-database', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(dbPayload()),
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(apiError(data, 'Connection failed'));
       }
-      
+
       setStep(2);
     } catch (err: any) {
       setError(err.message);
@@ -75,7 +81,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
   const saveConfiguration = async () => {
     setLoading(true);
     setError('');
-    
+
     try {
       const response = await fetch('/api/setup/complete', {
         method: 'POST',
@@ -102,13 +108,13 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           },
         }),
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(apiError(data, 'Setup failed'));
       }
-      
+
       onComplete();
     } catch (err: any) {
       setError(err.message);
@@ -127,49 +133,102 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     }
   };
 
+  const inputCls =
+    'w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-400 transition-shadow bg-white';
+  const labelCls = 'block text-[13px] font-medium text-slate-700 mb-1.5';
+
+  const Toggle = ({
+    checked,
+    onChange,
+    disabled,
+  }: {
+    checked: boolean;
+    onChange: (v: boolean) => void;
+    disabled?: boolean;
+  }) => (
+    <label className={`relative inline-flex items-center cursor-pointer ${disabled ? 'opacity-40 cursor-not-allowed' : ''}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        disabled={disabled}
+        className="sr-only peer"
+      />
+      <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-brand-600"></div>
+    </label>
+  );
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="w-full max-w-2xl bg-white border rounded-lg shadow-lg">
-        <div className="p-6 border-b">
-          <div className="flex items-center gap-3 mb-2">
-            <Brain className="h-8 w-8 text-indigo-600" />
-            <h2 className="text-2xl font-bold">Welcome to Your AI Business Analyst</h2>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-brand-50/40 to-slate-100 p-4">
+      <div className="w-full max-w-xl">
+        {/* Logo */}
+        <div className="flex items-center justify-center gap-3 mb-6">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-lg shadow-brand-600/25">
+            <Brain className="w-6 h-6 text-white" />
           </div>
-          <p className="text-gray-600 text-sm">
-            Let us get you set up in 3 simple steps. No technical knowledge required.
-          </p>
-          
-          <div className="flex gap-2 mt-4">
-            {[1, 2, 3].map((s) => (
-              <div
-                key={s}
-                className={`h-2 flex-1 rounded-full ${s <= step ? 'bg-indigo-600' : 'bg-gray-200'}`}
-              />
-            ))}
+          <div>
+            <div className="text-lg font-bold text-slate-900 tracking-tight">AI Business Analyst</div>
+            <div className="text-xs text-slate-500">Setup in 3 simple steps</div>
           </div>
         </div>
-        
-        <div className="p-6">
-          {error && (
-            <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-              {error}
+
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-card overflow-hidden">
+          {/* Step indicator */}
+          <div className="px-8 pt-6 pb-5 border-b border-slate-100">
+            <div className="flex items-center">
+              {steps.map((s, i) => (
+                <div key={s.n} className={`flex items-center ${i > 0 ? 'flex-1' : ''}`}>
+                  {i > 0 && (
+                    <div className={`flex-1 h-0.5 mx-3 rounded-full ${step > s.n - 1 ? 'bg-brand-500' : 'bg-slate-200'}`} />
+                  )}
+                  <div className="flex items-center gap-2">
+                    <div
+                      className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold transition-colors ${
+                        step === s.n
+                          ? 'bg-brand-600 text-white'
+                          : step > s.n
+                          ? 'bg-brand-100 text-brand-700'
+                          : 'bg-slate-100 text-slate-400'
+                      }`}
+                    >
+                      {step > s.n ? <CheckCircle2 className="w-4 h-4" /> : s.n}
+                    </div>
+                    <span
+                      className={`text-xs font-medium hidden sm:block ${
+                        step === s.n ? 'text-slate-900' : 'text-slate-400'
+                      }`}
+                    >
+                      {s.label}
+                    </span>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-          
-          {step === 1 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Database className="h-5 w-5 text-indigo-600" />
-                <h3 className="text-lg font-semibold">Connect Your Data</h3>
+          </div>
+
+          <div className="p-8">
+            {error && (
+              <div className="mb-5 p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-700 text-[13px]">
+                {error}
               </div>
-              
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Database Type</label>
+            )}
+
+            {/* Step 1: Database */}
+            {step === 1 && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center">
+                    <Database className="w-4 h-4 text-brand-600" />
+                  </div>
+                  <h3 className="text-base font-semibold text-slate-900">Connect Your Data</h3>
+                </div>
+
+                <div>
+                  <label className={labelCls}>Database Type</label>
                   <select
                     value={config.dbType}
                     onChange={(e) => setConfig({ ...config, dbType: e.target.value })}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                    className={inputCls}
                   >
                     <option value="sqlite">SQLite (Recommended for getting started)</option>
                     <option value="postgresql">PostgreSQL</option>
@@ -177,267 +236,252 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                     <option value="csv">CSV Files (Upload later)</option>
                   </select>
                 </div>
-                
+
                 {config.dbType !== 'sqlite' && config.dbType !== 'csv' && (
-                  <>
+                  <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Host</label>
+                      <label className={labelCls}>Host</label>
                       <input
                         type="text"
                         placeholder="localhost"
                         value={config.dbHost}
                         onChange={(e) => setConfig({ ...config, dbHost: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className={inputCls}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Port</label>
+                      <label className={labelCls}>Port</label>
                       <input
                         type="text"
                         placeholder="5432"
                         value={config.dbPort}
                         onChange={(e) => setConfig({ ...config, dbPort: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className={inputCls}
                       />
                     </div>
                     <div className="col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Database Name</label>
+                      <label className={labelCls}>Database Name</label>
                       <input
                         type="text"
                         placeholder="my_database"
                         value={config.dbName}
                         onChange={(e) => setConfig({ ...config, dbName: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className={inputCls}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                      <label className={labelCls}>Username</label>
                       <input
                         type="text"
                         placeholder="username"
                         value={config.dbUser}
                         onChange={(e) => setConfig({ ...config, dbUser: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className={inputCls}
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                      <label className={labelCls}>Password</label>
                       <input
                         type="password"
                         placeholder="password"
                         value={config.dbPassword}
                         onChange={(e) => setConfig({ ...config, dbPassword: e.target.value })}
-                        className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                        className={inputCls}
                       />
                     </div>
-                  </>
+                  </div>
                 )}
-                
+
                 {config.dbType === 'sqlite' && (
-                  <div className="col-span-2 space-y-3">
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
+                  <div className="space-y-3">
+                    <div className="p-4 bg-brand-50/60 border border-brand-100 rounded-xl text-[13px] text-brand-900 leading-relaxed">
                       SQLite will be created automatically. Perfect for testing and small teams.
                       You can migrate to PostgreSQL later.
                     </div>
-                    <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl">
                       <div>
-                        <label className="font-medium">Load Sample Data</label>
-                        <p className="text-sm text-gray-500">
-                          Seed demo tables (customers, products, orders) so you can ask
-                          questions immediately — no setup needed.
+                        <label className="text-sm font-medium text-slate-900">Load Sample Data</label>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Seed demo tables (customers, products, orders) so you can ask questions
+                          immediately — no setup needed.
                         </p>
                       </div>
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={config.sampleData}
-                          onChange={(e) => setConfig({ ...config, sampleData: e.target.checked })}
-                          className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                      </label>
+                      <Toggle
+                        checked={config.sampleData}
+                        onChange={(v) => setConfig({ ...config, sampleData: v })}
+                      />
                     </div>
                   </div>
                 )}
               </div>
-            </div>
-          )}
-          
-          {step === 2 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Brain className="h-5 w-5 text-indigo-600" />
-                <h3 className="text-lg font-semibold">Choose Your AI Brain</h3>
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">AI Provider</label>
-                <select
-                  value={config.aiProvider}
-                  onChange={(e) => setConfig({ ...config, aiProvider: e.target.value })}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                >
-                  <option value="ollama-local">Ollama (Local, Free, Private) - Recommended</option>
-                  <option value="ollama-cloud">Ollama Cloud</option>
-                  <option value="openai">OpenAI (GPT-4)</option>
-                  <option value="anthropic">Anthropic (Claude)</option>
-                  <option value="custom">Custom OpenAI-Compatible API</option>
-                </select>
-              </div>
-              
-              {config.aiProvider !== 'ollama-local' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">API Key</label>
-                  <input
-                    type="password"
-                    placeholder="sk-..."
-                    value={config.apiKey}
-                    onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Your API key is encrypted and stored locally. Never sent to our servers.
-                  </p>
-                </div>
-              )}
-              
-              {config.aiProvider === 'ollama-local' && (
-                <div className="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 text-sm flex items-start gap-2">
-                  <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    Ollama will run on your machine. Make sure you have it installed:
-                    <br />
-                    <code className="bg-gray-100 px-2 py-1 rounded mt-2 block">
-                      curl -fsSL https://ollama.com/install.sh | sh
-                    </code>
+            )}
+
+            {/* Step 2: AI */}
+            {step === 2 && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center">
+                    <Brain className="w-4 h-4 text-brand-600" />
                   </div>
+                  <h3 className="text-base font-semibold text-slate-900">Choose Your AI Brain</h3>
                 </div>
-              )}
-              
-              {(config.aiProvider === 'ollama-local' || config.aiProvider === 'ollama-cloud' || config.aiProvider === 'custom') && (
+
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Base URL
-                    {config.aiProvider === 'ollama-local' && (
-                      <span className="text-gray-400 font-normal">
-                        {' '}
-                        (use http://host.docker.internal:11434 when running in Docker)
-                      </span>
-                    )}
-                    {config.aiProvider === 'ollama-cloud' && (
-                      <span className="text-gray-400 font-normal"> (https://ollama.com)</span>
-                    )}
-                  </label>
-                  <input
-                    type="text"
-                    placeholder={
-                      config.aiProvider === 'ollama-local'
-                        ? 'http://localhost:11434'
-                        : config.aiProvider === 'ollama-cloud'
-                        ? 'https://ollama.com'
-                        : 'https://your-endpoint.example.com/v1'
-                    }
-                    value={config.baseUrl}
-                    onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
-                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                  />
+                  <label className={labelCls}>AI Provider</label>
+                  <select
+                    value={config.aiProvider}
+                    onChange={(e) => setConfig({ ...config, aiProvider: e.target.value })}
+                    className={inputCls}
+                  >
+                    <option value="ollama-local">Ollama (Local, Free, Private) - Recommended</option>
+                    <option value="ollama-cloud">Ollama Cloud</option>
+                    <option value="openai">OpenAI (GPT-4)</option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="custom">Custom OpenAI-Compatible API</option>
+                  </select>
                 </div>
-              )}
-            </div>
-          )}
-          
-          {step === 3 && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-2 mb-4">
-                <Sparkles className="h-5 w-5 text-indigo-600" />
-                <h3 className="text-lg font-semibold">Enable Superpowers</h3>
-              </div>
-              
-              <div className="space-y-4">
-                <div className="flex items-center justify-between p-4 border rounded-lg">
+
+                {config.aiProvider !== 'ollama-local' && (
                   <div>
-                    <label className="font-medium">Newsroom (Market Intelligence)</label>
-                    <p className="text-sm text-gray-500">
-                      Search web for market trends, competitor news, and industry insights
+                    <label className={labelCls}>API Key</label>
+                    <input
+                      type="password"
+                      placeholder="sk-..."
+                      value={config.apiKey}
+                      onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
+                      className={inputCls}
+                    />
+                    <p className="text-xs text-slate-400 mt-1.5">
+                      Your API key is encrypted and stored locally. Never sent to our servers.
                     </p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
+                )}
+
+                {config.aiProvider === 'ollama-local' && (
+                  <div className="p-4 bg-emerald-50/60 border border-emerald-100 rounded-xl text-[13px] text-emerald-900 flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      Ollama will run on your machine. Make sure you have it installed:
+                      <code className="bg-white px-2 py-1 rounded-md border border-emerald-200 block mt-2 font-mono text-xs">
+                        curl -fsSL https://ollama.com/install.sh | sh
+                      </code>
+                    </div>
+                  </div>
+                )}
+
+                {(config.aiProvider === 'ollama-local' ||
+                  config.aiProvider === 'ollama-cloud' ||
+                  config.aiProvider === 'custom') && (
+                  <div>
+                    <label className={labelCls}>
+                      Base URL
+                      {config.aiProvider === 'ollama-local' && (
+                        <span className="text-slate-400 font-normal">
+                          {' '}
+                          (use http://host.docker.internal:11434 when running in Docker)
+                        </span>
+                      )}
+                      {config.aiProvider === 'ollama-cloud' && (
+                        <span className="text-slate-400 font-normal"> (https://ollama.com)</span>
+                      )}
+                    </label>
                     <input
-                      type="checkbox"
+                      type="text"
+                      placeholder={
+                        config.aiProvider === 'ollama-local'
+                          ? 'http://localhost:11434'
+                          : config.aiProvider === 'ollama-cloud'
+                          ? 'https://ollama.com'
+                          : 'https://your-endpoint.example.com/v1'
+                      }
+                      value={config.baseUrl}
+                      onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
+                      className={inputCls}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Step 3: Features */}
+            {step === 3 && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4 text-brand-600" />
+                  </div>
+                  <h3 className="text-base font-semibold text-slate-900">Enable Superpowers</h3>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl">
+                    <div>
+                      <label className="text-sm font-medium text-slate-900">Newsroom (Market Intelligence)</label>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Search web for market trends, competitor news, and industry insights
+                      </p>
+                    </div>
+                    <Toggle
                       checked={config.newsroomEnabled}
-                      onChange={(e) => setConfig({ ...config, newsroomEnabled: e.target.checked })}
-                      className="sr-only peer"
+                      onChange={(v) => setConfig({ ...config, newsroomEnabled: v })}
                     />
-                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                  </label>
-                </div>
-                
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <label className="font-medium">Code Sandbox (Advanced Math)</label>
-                    <p className="text-sm text-gray-500">
-                      Execute Python code for 100% accurate calculations and statistics
-                    </p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
+
+                  <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl">
+                    <div>
+                      <label className="text-sm font-medium text-slate-900">Code Sandbox (Advanced Math)</label>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Execute Python code for 100% accurate calculations and statistics
+                      </p>
+                    </div>
+                    <Toggle
                       checked={config.codeSandboxEnabled}
-                      onChange={(e) => setConfig({ ...config, codeSandboxEnabled: e.target.checked })}
-                      className="sr-only peer"
+                      onChange={(v) => setConfig({ ...config, codeSandboxEnabled: v })}
                     />
-                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                  </label>
-                </div>
-                
-                <div className="flex items-center justify-between p-4 border rounded-lg">
-                  <div>
-                    <label className="font-medium">Air-Gap Mode (Maximum Security)</label>
-                    <p className="text-sm text-gray-500">
-                      Disable all internet access. Only works with local AI models.
-                    </p>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
+
+                  <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl">
+                    <div>
+                      <label className="text-sm font-medium text-slate-900">Air-Gap Mode (Maximum Security)</label>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Disable all internet access. Only works with local AI models.
+                      </p>
+                    </div>
+                    <Toggle
                       checked={config.airGapMode}
-                      onChange={(e) => setConfig({ ...config, airGapMode: e.target.checked })}
+                      onChange={(v) => setConfig({ ...config, airGapMode: v })}
                       disabled={config.aiProvider === 'ollama-local'}
-                      className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-gray-200 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
-                  </label>
+                  </div>
+                </div>
+
+                <div className="p-4 bg-brand-50/60 border border-brand-100 rounded-xl text-[13px] text-brand-900 leading-relaxed">
+                  <strong>You are almost ready!</strong> Once you click Finish, the AI will analyze
+                  your database schema and prepare its first briefing. This takes about 30 seconds.
                 </div>
               </div>
-              
-              <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm">
-                <strong>You are almost ready!</strong> Once you click Finish, the AI will analyze 
-                your database schema and prepare its first briefing. This takes about 30 seconds.
-              </div>
-            </div>
-          )}
-          
-          <div className="flex justify-between mt-6">
-            {step > 1 ? (
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-between mt-8">
               <button
                 onClick={() => setStep(step - 1)}
-                disabled={loading}
-                className="px-6 py-2 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+                disabled={loading || step === 1}
+                className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-slate-600 rounded-xl hover:bg-slate-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Back
+                <ArrowLeft className="w-4 h-4" /> Back
               </button>
-            ) : (
-              <div />
-            )}
-            
-            <button
-              onClick={handleNext}
-              disabled={loading}
-              className="px-8 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
-            >
-              {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {step === 3 ? 'Finish Setup' : 'Continue'}
-            </button>
+
+              <button
+                onClick={handleNext}
+                disabled={loading}
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-xl hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              >
+                {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                {step === 3 ? 'Finish Setup' : 'Continue'}
+                {!loading && <ArrowRight className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
         </div>
       </div>

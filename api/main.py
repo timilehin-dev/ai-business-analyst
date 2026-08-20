@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import asyncio
@@ -320,10 +321,26 @@ async def broadcast_update(message: dict):
 
 # ==================== STATIC FILES (FRONTEND) ====================
 
+class SPAStaticFiles(StaticFiles):
+    """StaticFiles that falls back to index.html for client-side routes.
+
+    Lets React Router handle /dashboard, /chat, etc. on direct navigation
+    and refresh, while unknown /api/* paths still return a real 404.
+    """
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and not path.startswith("api/"):
+                return await super().get_response("index.html", scope)
+            raise
+
+
 # Serve built React frontend
 frontend_dir = os.path.join(os.path.dirname(__file__), "../web/dist")
 if os.path.exists(frontend_dir):
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="static")
+    app.mount("/", SPAStaticFiles(directory=frontend_dir, html=True), name="static")
 else:
     @app.get("/")
     async def root():

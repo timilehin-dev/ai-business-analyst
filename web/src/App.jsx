@@ -2,7 +2,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'r
 import { useEffect, useState } from 'react';
 import SetupWizard from './components/SetupWizard';
 import Dashboard from './components/Dashboard';
-import Briefing from './components/Briefing';
 import ChatInterface from './components/ChatInterface';
 import DataSources from './components/DataSources';
 
@@ -13,9 +12,9 @@ function App() {
         <Route path="/" element={<Navigate to="/setup" replace />} />
         <Route path="/setup" element={<SetupWizardWrapper />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/briefing" element={<Briefing />} />
         <Route path="/chat" element={<ChatInterface />} />
         <Route path="/data" element={<DataSources />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Router>
   );
@@ -46,8 +45,8 @@ function SetupWizardWrapper() {
 
   if (checking) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
-        <p className="text-gray-500">Checking setup status…</p>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 via-brand-50/40 to-slate-100">
+        <p className="text-sm text-slate-400">Checking setup status…</p>
       </div>
     );
   }
