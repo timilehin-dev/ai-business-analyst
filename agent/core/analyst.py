@@ -435,9 +435,11 @@ class AutonomousAnalyst:
         self,
         model_config: Dict[str, str],
         newsroom_enabled: bool = True,
-        database_url: Optional[str] = None
+        database_url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        api_base: Optional[str] = None,
     ):
-        self.model_router = ModelRouter(model_config)
+        self.model_router = ModelRouter(model_config, api_key=api_key, api_base=api_base)
         self.newsroom_tool = NewsroomTool(enabled=newsroom_enabled)
         self.sql_validator = SQLValidatorTool(strict_mode=True)
         self.database_url = database_url
@@ -506,7 +508,11 @@ class AutonomousAnalyst:
 def create_analyst(
     config: Dict[str, str],
     newsroom_enabled: bool = True,
-    database_url: Optional[str] = None
+    database_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+    api_base: Optional[str] = None,
 ) -> AutonomousAnalyst:
     """Create configured analyst instance."""
-    return AutonomousAnalyst(config, newsroom_enabled, database_url)
+    return AutonomousAnalyst(
+        config, newsroom_enabled, database_url, api_key, api_base
+    )

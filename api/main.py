@@ -15,7 +15,7 @@ import os
 
 from api.config import settings
 from agent.core.analyst import create_analyst
-from agent.models.provider import create_model_router_from_config
+from agent.models.provider import create_model_router_from_config, prefix_model_name
 from agent.memory.database import db_manager
 
 # Import route modules
@@ -102,19 +102,33 @@ def reinitialize_analyst() -> bool:
         models = db_manager.get_config("models", is_sensitive=False) or {}
         features = db_manager.get_config("features", is_sensitive=False) or {}
         database_url = db_manager.get_config("database_url", is_sensitive=False)
+        provider = db_manager.get_config("ai_provider", is_sensitive=False) or "ollama-local"
+        api_key = db_manager.get_config("api_key", is_sensitive=True)
+        base_url = db_manager.get_config("base_url", is_sensitive=False)
         air_gap = features.get("air_gap", False)
         newsroom_enabled = features.get("newsroom", True) and not air_gap
 
+        # Prefix model names for litellm (e.g. 'qwen2.5:7b' -> 'ollama/qwen2.5:7b')
         model_config = {
-            "reasoning": models.get("reasoning") or settings.models.reasoning,
-            "sql": models.get("sql") or settings.models.sql,
-            "embedding": models.get("embedding") or settings.models.embedding,
-            "fallback": models.get("fallback") or settings.models.fallback,
+            "reasoning": prefix_model_name(
+                models.get("reasoning") or settings.models.reasoning, provider
+            ),
+            "sql": prefix_model_name(
+                models.get("sql") or settings.models.sql, provider
+            ),
+            "embedding": prefix_model_name(
+                models.get("embedding") or settings.models.embedding, provider
+            ),
+            "fallback": prefix_model_name(
+                models.get("fallback") or settings.models.fallback, provider
+            ),
         }
         analyst = create_analyst(
             model_config,
             newsroom_enabled=newsroom_enabled,
             database_url=database_url,
+            api_key=api_key,
+            api_base=base_url,
         )
         print(f"✅ Analyst re-initialized with models: {model_config}")
         if database_url:

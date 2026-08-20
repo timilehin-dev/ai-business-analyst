@@ -117,23 +117,51 @@ class LiteLLMProvider:
         return await loop.run_in_executor(None, sync_embedding)
 
 
+def prefix_model_name(model_name: str, provider: str) -> str:
+    """
+    Add the litellm provider prefix if missing.
+    e.g. 'qwen2.5:7b' + 'ollama-local' -> 'ollama/qwen2.5:7b'.
+    LiteLLM requires the prefix to route to the right provider.
+    """
+    if "/" in model_name:
+        return model_name
+    prefixes = {
+        "ollama-local": "ollama",
+        "ollama-cloud": "ollama",
+        "openai": "openai",
+        "anthropic": "anthropic",
+        "custom": "openai",  # custom OpenAI-compatible endpoints
+    }
+    prefix = prefixes.get(provider)
+    return f"{prefix}/{model_name}" if prefix else model_name
+
+
 class ModelRouter:
     """
     Routes tasks to appropriate models based on configuration.
     Implements task-based model selection for cost/privacy optimization.
     """
-    
-    def __init__(self, config: Dict[str, str]):
+
+    def __init__(
+        self,
+        config: Dict[str, str],
+        api_key: Optional[str] = None,
+        api_base: Optional[str] = None,
+    ):
         """
         Initialize router with model configuration.
-        
+
         Args:
             config: Dict mapping task types to model names
                    e.g., {'reasoning': 'claude-sonnet-4', 'sql': 'ollama/qwen2.5'}
+            api_key: Provider API key (None for local Ollama)
+            api_base: Custom base URL (e.g. http://localhost:11434)
         """
         self.providers = {}
         for task_type, model_name in config.items():
-            self.providers[task_type] = LiteLLMProvider(model_name)
+            self.providers[task_type] = LiteLLMProvider(
+                model_name, api_key=api_key, api_base=api_base
+            )
     
     def get_provider(self, task_type: str = 'reasoning') -> LiteLLMProvider:
         """Get provider for specific task type."""

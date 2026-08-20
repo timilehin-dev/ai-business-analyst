@@ -172,7 +172,7 @@ async def test_ai_provider(config: AIProviderConfig) -> Dict[str, Any]:
 
     # Cloud providers: require an API key
     if provider in ("openai", "anthropic", "ollama-cloud", "custom"):
-        if not config.api_key and provider != "ollama-cloud":
+        if not config.api_key:
             raise HTTPException(status_code=400, detail="API key is required for this provider")
         return {
             "success": True,

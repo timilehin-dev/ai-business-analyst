@@ -19,6 +19,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     dbPassword: '',
     aiProvider: 'ollama-local',
     apiKey: '',
+    baseUrl: '',
     modelReasoning: '',
     modelSql: '',
     newsroomEnabled: true,
@@ -79,6 +80,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           ai: {
             provider: config.aiProvider,
             api_key: config.apiKey,
+            base_url: config.baseUrl,
             models: {
               reasoning: config.modelReasoning,
               sql: config.modelSql,
@@ -282,6 +284,36 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                       curl -fsSL https://ollama.com/install.sh | sh
                     </code>
                   </div>
+                </div>
+              )}
+              
+              {(config.aiProvider === 'ollama-local' || config.aiProvider === 'ollama-cloud' || config.aiProvider === 'custom') && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Base URL
+                    {config.aiProvider === 'ollama-local' && (
+                      <span className="text-gray-400 font-normal">
+                        {' '}
+                        (use http://host.docker.internal:11434 when running in Docker)
+                      </span>
+                    )}
+                    {config.aiProvider === 'ollama-cloud' && (
+                      <span className="text-gray-400 font-normal"> (https://ollama.com)</span>
+                    )}
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={
+                      config.aiProvider === 'ollama-local'
+                        ? 'http://localhost:11434'
+                        : config.aiProvider === 'ollama-cloud'
+                        ? 'https://ollama.com'
+                        : 'https://your-endpoint.example.com/v1'
+                    }
+                    value={config.baseUrl}
+                    onChange={(e) => setConfig({ ...config, baseUrl: e.target.value })}
+                    className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                  />
                 </div>
               )}
             </div>
