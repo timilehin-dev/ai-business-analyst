@@ -234,7 +234,7 @@ Built with:
 - [React + Vite](https://vitejs.dev/) - Frontend
 - [Tailwind CSS](https://tailwindcss.com/) - Styling
 - [Ollama](https://ollama.ai/) - Local LLM runtime
-- [duckduckgo-search](https://pypi.org/project/duckduckgo-search/) - Web search
+- [DuckDuckGo HTML endpoint](https://html.duckduckgo.com/) - Web search (via httpx + BeautifulSoup, no heavy deps)
 
 ---
 

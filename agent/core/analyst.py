@@ -1,17 +1,20 @@
 """
 Core Agent Logic using LangGraph.
 Implements the Plan → Search → Query → Validate → Report workflow.
-Integrates Newsroom, Code Sandbox, and SQL Validator tools.
+Integrates Newsroom, Code Sandbox, SQL Validator, and real database execution.
 """
 from typing import TypedDict, List, Dict, Any, Optional, Annotated
 from langgraph.graph import StateGraph, END
 import operator
 import json
+import asyncio
+import functools
 
 from agent.models.provider import ModelRouter
 from agent.tools.newsroom import NewsroomTool
 from agent.tools.sandbox import CodeSandboxTool
 from agent.tools.sql_validator import SQLValidatorTool
+from agent.tools.database import DatabaseConnection
 from api.config import settings
 
 
@@ -143,11 +146,13 @@ async def newsroom_node(state: AgentState, newsroom_tool: NewsroomTool) -> Agent
 async def sql_generator_node(state: AgentState, model_router: ModelRouter) -> AgentState:
     """
     Generate SQL query based on plan and schema.
+    Includes previous execution errors so the agent can self-correct.
     """
     plan = state.get('plan', '')
     schema_info = state.get('schema_info', '')
     messages = state['messages']
     last_message = messages[-1]['content']
+    previous_errors = state.get('validation_errors', [])
     
     system_prompt = f"""You are an expert SQL generator.
 Given the database schema and analysis plan, write a precise SQL query.
@@ -164,6 +169,11 @@ RULES:
 
 ANALYSIS PLAN:
 {plan}
+"""
+    if previous_errors:
+        system_prompt += f"""
+PREVIOUS ATTEMPT FAILED. These errors were reported — fix them in your new query:
+{chr(10).join(previous_errors)}
 """
     
     response = await model_router.complete(
@@ -185,16 +195,23 @@ ANALYSIS PLAN:
     return {'sql_query': sql_query}
 
 
-async def executor_node(state: AgentState, sql_validator: SQLValidatorTool) -> AgentState:
+async def executor_node(
+    state: AgentState,
+    sql_validator: SQLValidatorTool,
+    db_conn: Optional[DatabaseConnection] = None
+) -> AgentState:
     """
-    Execute the SQL query against the database with validation.
+    Execute the SQL query against the real database with validation.
+    Falls back to a clear error when no database is configured.
     """
     sql_query = state.get('sql_query', '')
+    iteration = state.get('iteration_count', 0) + 1
     
     if not sql_query:
         return {
             'execution_result': None,
-            'validation_errors': ['No SQL query generated']
+            'validation_errors': ['No SQL query generated'],
+            'iteration_count': iteration
         }
     
     # SECURITY: Validate SQL is read-only using validator tool
@@ -202,28 +219,30 @@ async def executor_node(state: AgentState, sql_validator: SQLValidatorTool) -> A
     if not is_valid:
         return {
             'execution_result': None,
-            'validation_errors': [f'Security violation: {error_msg}']
+            'validation_errors': [f'Security violation: {error_msg}'],
+            'iteration_count': iteration
         }
     
-    # Placeholder for actual database execution
-    # In production, this would connect via SQLAlchemy
-    try:
-        # Simulated execution result
-        execution_result = {
-            'columns': ['column1', 'column2'],
-            'rows': [],  # Would contain actual data
-            'row_count': 0,
-            'query': sql_query
+    if db_conn is None:
+        return {
+            'execution_result': None,
+            'validation_errors': ['Database not configured. Complete the setup wizard first.'],
+            'iteration_count': iteration
         }
-        
+    
+    # Execute against the real database (read-only enforced in the connection layer)
+    try:
+        execution_result = db_conn.execute_readonly(sql_query)
         return {
             'execution_result': execution_result,
-            'validation_errors': []
+            'validation_errors': [],
+            'iteration_count': iteration
         }
     except Exception as e:
         return {
             'execution_result': None,
-            'validation_errors': [f'Execution failed: {str(e)}']
+            'validation_errors': [f'Execution failed: {str(e)}'],
+            'iteration_count': iteration
         }
 
 
@@ -240,21 +259,31 @@ async def validator_node(state: AgentState, model_router: ModelRouter) -> AgentS
             'needs_human_escalation': True
         }
     
-    # Check data quality
+# Check data quality
     row_count = execution_result.get('row_count', 0)
-    if row_count == 0:
-        return {
-            'confidence_score': 0.2,
-            'needs_human_escalation': True,
-            'validation_errors': validation_errors + ['No data returned from query']
-        }
+    truncated = execution_result.get('truncated', False)
+    errors = list(validation_errors)
     
-    # Statistical validation (simplified)
-    confidence = min(1.0, 0.5 + (row_count / 1000))  # More data = higher confidence
+    if row_count == 0:
+        errors.append('No data returned from query')
+        confidence = 0.3
+    else:
+        # Query executed and returned data: high base confidence.
+        # Row count does NOT drive trust — a 2-row answer can be exact.
+        confidence = 0.9
+    
+    # Penalize truncated results (query exceeded the row limit, aggregates may be safer)
+    if truncated:
+        confidence -= 0.2
+        errors.append('Result truncated: query exceeded the row limit, aggregates may be safer')
+    
+    confidence = max(0.0, min(1.0, confidence))
+    escalation = confidence < 0.6 or row_count == 0
     
     return {
         'confidence_score': confidence,
-        'needs_human_escalation': confidence < 0.6
+        'needs_human_escalation': escalation,
+        'validation_errors': errors
     }
 
 
@@ -313,23 +342,26 @@ Use markdown with clear sections, bullet points, and bold text for emphasis.
 def create_agent_graph(
     model_router: ModelRouter, 
     newsroom_tool: NewsroomTool,
-    sql_validator: SQLValidatorTool
+    sql_validator: SQLValidatorTool,
+    db_conn: Optional[DatabaseConnection] = None
 ) -> StateGraph:
     """
     Build the LangGraph state machine for the autonomous analyst.
-    Integrates Newsroom, Code Sandbox, and SQL validation.
+    Integrates Newsroom, Code Sandbox, SQL validation, and real database execution.
     """
     
     # Initialize graph
     workflow = StateGraph(AgentState)
     
-    # Add nodes with bound dependencies
-    workflow.add_node("planner", lambda state: planner_node(state, model_router))
-    workflow.add_node("newsroom", lambda state: newsroom_node(state, newsroom_tool))
-    workflow.add_node("sql_generator", lambda state: sql_generator_node(state, model_router))
-    workflow.add_node("executor", lambda state: executor_node(state, sql_validator))
-    workflow.add_node("validator", lambda state: validator_node(state, model_router))
-    workflow.add_node("reporter", lambda state: reporter_node(state, model_router))
+    # Add nodes with bound dependencies.
+    # NOTE: use functools.partial, NOT lambdas — a lambda returning a coroutine
+    # is treated as a sync node by langgraph and never awaited.
+    workflow.add_node("planner", functools.partial(planner_node, model_router=model_router))
+    workflow.add_node("newsroom", functools.partial(newsroom_node, newsroom_tool=newsroom_tool))
+    workflow.add_node("sql_generator", functools.partial(sql_generator_node, model_router=model_router))
+    workflow.add_node("executor", functools.partial(executor_node, sql_validator=sql_validator, db_conn=db_conn))
+    workflow.add_node("validator", functools.partial(validator_node, model_router=model_router))
+    workflow.add_node("reporter", functools.partial(reporter_node, model_router=model_router))
     
     # Define edges
     workflow.set_entry_point("planner")
@@ -355,8 +387,20 @@ def create_agent_graph(
     # SQL Generator → Executor
     workflow.add_edge("sql_generator", "executor")
     
-    # Executor → Validator
-    workflow.add_edge("executor", "validator")
+    # Executor → Validator, or retry SQL generation on failure (self-correction)
+    def route_after_executor(state: AgentState) -> str:
+        if state.get('validation_errors') and state.get('iteration_count', 0) < state.get('max_iterations', 3):
+            return "retry"
+        return "validator"
+    
+    workflow.add_conditional_edges(
+        source="executor",
+        path=route_after_executor,
+        path_map={
+            "retry": "sql_generator",
+            "validator": "validator"
+        }
+    )
     
     # Validator → Reporter (or escalate)
     def route_after_validator(state: AgentState) -> str:
@@ -384,18 +428,34 @@ def create_agent_graph(
 class AutonomousAnalyst:
     """
     Main agent class that orchestrates the entire analysis workflow.
-    Integrates Newsroom, Code Sandbox, and SQL Validation tools.
+    Integrates Newsroom, Code Sandbox, SQL Validation, and real database execution.
     """
     
-    def __init__(self, model_config: Dict[str, str], newsroom_enabled: bool = True):
+    def __init__(
+        self,
+        model_config: Dict[str, str],
+        newsroom_enabled: bool = True,
+        database_url: Optional[str] = None
+    ):
         self.model_router = ModelRouter(model_config)
         self.newsroom_tool = NewsroomTool(enabled=newsroom_enabled)
         self.sql_validator = SQLValidatorTool(strict_mode=True)
+        self.database_url = database_url
+        self.db_conn: Optional[DatabaseConnection] = None
+        if database_url:
+            self.db_conn = DatabaseConnection(database_url)
         self.graph = create_agent_graph(
             self.model_router, 
             self.newsroom_tool, 
-            self.sql_validator
+            self.sql_validator,
+            self.db_conn
         )
+    
+    def get_schema(self) -> str:
+        """Return the crawled schema for the configured database (or a hint to set one up)."""
+        if self.db_conn is None:
+            return "No database configured. Complete the setup wizard to connect one."
+        return self.db_conn.crawl_schema()
     
     async def analyze(self, question: str, context: Dict[str, str] = None) -> Dict[str, Any]:
         """
@@ -408,11 +468,14 @@ class AutonomousAnalyst:
         Returns:
             Dict with final_response, confidence_score, and metadata
         """
+        schema_info = (context.get('schema_info') if context and context.get('schema_info')
+                       else self.get_schema())
+        
         initial_state = {
             'messages': [{'role': 'user', 'content': question}],
             'business_context': context.get('business_context', '') if context else '',
             'market_context': '',
-            'schema_info': context.get('schema_info', '') if context else '',
+            'schema_info': schema_info,
             'plan': '',
             'search_queries': [],
             'sql_query': None,
@@ -440,6 +503,10 @@ class AutonomousAnalyst:
 
 
 # Factory function
-def create_analyst(config: Dict[str, str], newsroom_enabled: bool = True) -> AutonomousAnalyst:
+def create_analyst(
+    config: Dict[str, str],
+    newsroom_enabled: bool = True,
+    database_url: Optional[str] = None
+) -> AutonomousAnalyst:
     """Create configured analyst instance."""
-    return AutonomousAnalyst(config, newsroom_enabled)
+    return AutonomousAnalyst(config, newsroom_enabled, database_url)

@@ -57,6 +57,11 @@ async def lifespan(app: FastAPI):
         print(f"⚠️ Analyst initialization failed (will retry on demand): {e}")
         analyst = None
 
+    # If setup was completed in a previous run, reload the saved
+    # configuration (models + database) so restarts keep working.
+    if db_manager.get_config("setup_complete", is_sensitive=False):
+        reinitialize_analyst()
+
     yield
 
     print("👋 Shutting down")
@@ -90,12 +95,13 @@ def reinitialize_analyst() -> bool:
     """
     (Re)create the analyst from saved configuration.
     Called after the setup wizard completes so the running
-    instance picks up the user's model choices immediately.
+    instance picks up the user's model choices and database immediately.
     """
     global analyst
     try:
         models = db_manager.get_config("models", is_sensitive=False) or {}
         features = db_manager.get_config("features", is_sensitive=False) or {}
+        database_url = db_manager.get_config("database_url", is_sensitive=False)
         air_gap = features.get("air_gap", False)
         newsroom_enabled = features.get("newsroom", True) and not air_gap
 
@@ -105,8 +111,14 @@ def reinitialize_analyst() -> bool:
             "embedding": models.get("embedding") or settings.models.embedding,
             "fallback": models.get("fallback") or settings.models.fallback,
         }
-        analyst = create_analyst(model_config, newsroom_enabled=newsroom_enabled)
+        analyst = create_analyst(
+            model_config,
+            newsroom_enabled=newsroom_enabled,
+            database_url=database_url,
+        )
         print(f"✅ Analyst re-initialized with models: {model_config}")
+        if database_url:
+            print(f"🗄️  Database connected: {database_url.split('://')[0]}://***")
         return True
     except Exception as e:
         print(f"⚠️ Analyst re-initialization failed: {e}")
