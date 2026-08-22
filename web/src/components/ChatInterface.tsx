@@ -13,6 +13,15 @@ interface Message {
   confidence?: number;
 }
 
+interface HistoryItem {
+  id: number;
+  question: string;
+  confidence: number | null;
+  timestamp: string;
+  sql_query?: string;
+  answer?: string;
+}
+
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -28,6 +37,11 @@ export default function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const [expandedWork, setExpandedWork] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+
+  useEffect(() => {
+    fetch('/api/chat/history').then((r) => r.json()).then((d) => setHistory(d.history || [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -194,6 +208,37 @@ export default function ChatInterface() {
             </div>
           )}
         </div>
+
+        {/* Persistent query history */}
+        {history.length > 0 && (
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-card p-5 mb-5">
+            <h2 className="text-sm font-semibold text-slate-900 mb-3">Query History</h2>
+            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+              {history.map((item) => (
+                <div key={item.id} className="p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+                  <div className="text-sm font-medium text-slate-800 truncate">{item.question}</div>
+                  <div className="flex items-center gap-3 mt-1.5">
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                      item.confidence !== null && parseFloat(item.confidence) >= 0.8 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'
+                    }`}>
+                      {(item.confidence !== null ? Math.round(parseFloat(item.confidence) * 100) : 0)}% confidence
+                    </span>
+                    <span className="text-[11px] text-slate-400">{new Date(item.timestamp).toLocaleString()}</span>
+                  </div>
+                  {item.answer && <p className="text-xs text-slate-500 mt-2 line-clamp-2">{item.answer}</p>}
+                  {item.sql_query && (
+                    <button
+                      onClick={() => setInput(`Review SQL from prior query (#${item.id}): ${item.question}`)}
+                      className="mt-1.5 text-[11px] text-brand-600 hover:text-brand-700 font-medium underline underline-offset-2"
+                    >
+                      Revisit SQL
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Composer */}
         <div className="mt-5 pt-4 border-t border-slate-200">

@@ -251,6 +251,16 @@ async def analyze(request: AnalysisRequest):
             question=request.question,
             context=request.context,
         )
+        # Persist each interaction so chat/query history survives sessions
+        try:
+            db_manager.save_chat_history(
+                question=request.question,
+                sql_query=result.get('sql'),
+                answer=result.get('answer'),
+                confidence=result.get('confidence'),
+            )
+        except Exception:
+            pass  # Non-blocking: don't break analysis if history write fails
 
         return AnalysisResponse(
             answer=result['answer'],
@@ -323,6 +333,13 @@ async def broadcast_update(message: dict):
         active_connections.remove(conn)
 
 
+# ==================== PERSISTENT QUERY HISTORY ====================
+@app.get("/api/chat/history")
+async def chat_history():
+    """Return persistent query history (survives across sessions)."""
+    return {"history": db_manager.get_chat_history(limit=20)}
+
+
 # ==================== STATIC FILES (FRONTEND) ====================
 
 class SPAStaticFiles(StaticFiles):
@@ -354,7 +371,6 @@ else:
             "docs": "/docs",
             "status": "Backend running - build frontend with: cd web && npm install && npm run build",
         }
-
 
 if __name__ == "__main__":
     import uvicorn

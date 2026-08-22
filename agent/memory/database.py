@@ -5,11 +5,21 @@ Handles secure config storage and future memory systems.
 import os
 import json
 from typing import Optional, Dict, Any
-from sqlalchemy import create_engine, Column, String, Text, Boolean, DateTime, func
+from sqlalchemy import create_engine, Column, String, Text, Boolean, DateTime, func, Integer
 from sqlalchemy.orm import sessionmaker, declarative_base
 from cryptography.fernet import Fernet
 
 Base = declarative_base()
+
+class ChatHistoryRecord(Base):
+    """Persistent chat/query history — survives across sessions."""
+    __tablename__ = "chat_history"
+    id = Column(Integer, primary_key=True)
+    question = Column(Text, nullable=False)
+    sql_query = Column(Text, nullable=True)
+    answer = Column(Text, nullable=True)
+    confidence = Column(String, nullable=True)
+    timestamp = Column(DateTime, default=func.now())
 
 class ConfigStore(Base):
     """Encrypted storage for user configurations and API keys."""
@@ -126,6 +136,34 @@ class DatabaseManager:
             count = session.query(ConfigStore).delete()
             session.commit()
             return count
+        finally:
+            session.close()
+
+    # ==================== CHAT HISTORY ====================
+    def save_chat_history(self, question: str, sql_query: str = None, answer: str = None, confidence: float = None):
+        session = self.SessionLocal()
+        try:
+            rec = ChatHistoryRecord(
+                question=question,
+                sql_query=sql_query,
+                answer=answer,
+                confidence=str(confidence) if confidence is not None else None,
+            )
+            session.add(rec)
+            session.commit()
+            return rec.id
+        finally:
+            session.close()
+
+    def get_chat_history(self, limit: int = 20) -> list:
+        session = self.SessionLocal()
+        try:
+            rows = session.query(ChatHistoryRecord).order_by(ChatHistoryRecord.timestamp.desc()).limit(limit).all()
+            return [
+                {"id": r.id, "question": r.question, "sql_query": r.sql_query,
+                 "answer": r.answer, "confidence": r.confidence, "timestamp": r.timestamp.isoformat() if r.timestamp else None}
+                for r in rows
+            ]
         finally:
             session.close()
 
