@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { CheckCircle2, Loader2, Database, Brain, Sparkles, ArrowLeft, ArrowRight } from 'lucide-react';
+import { useState, useRef } from 'react';
+import { CheckCircle2, Loader2, Database, Brain, Sparkles, ArrowLeft, ArrowRight, Upload, FileText, Globe } from 'lucide-react';
 
 interface SetupWizardProps {
   onComplete: () => void;
@@ -8,7 +8,8 @@ interface SetupWizardProps {
 const steps = [
   { n: 1, label: 'Connect data' },
   { n: 2, label: 'Choose AI' },
-  { n: 3, label: 'Enable features' },
+  { n: 3, label: 'Data sources' },
+  { n: 4, label: 'Enable features' },
 ];
 
 export default function SetupWizard({ onComplete }: SetupWizardProps) {
@@ -129,6 +130,8 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     } else if (step === 2) {
       setStep(3);
     } else if (step === 3) {
+      setStep(4);
+    } else if (step === 4) {
       saveConfiguration();
     }
   };
@@ -168,7 +171,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
           </div>
           <div>
             <div className="text-lg font-bold text-slate-900 tracking-tight">AI Business Analyst</div>
-            <div className="text-xs text-slate-500">Setup in 3 simple steps</div>
+            <div className="text-xs text-slate-500">Setup in 4 simple steps</div>
           </div>
         </div>
 
@@ -403,8 +406,55 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
               </div>
             )}
 
-            {/* Step 3: Features */}
+            {/* Step 3: Data Sources */}
             {step === 3 && (
+              <div className="space-y-5">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <Upload className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <h3 className="text-base font-semibold text-slate-900">Connect Your Data</h3>
+                </div>
+
+                <p className="text-sm text-slate-600 leading-relaxed">
+                  Upload files or connect external data sources. You can always add more later from the Data Sources page.
+                </p>
+
+                {/* File upload zone */}
+                <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:border-brand-300 hover:bg-brand-50/30 transition-colors">
+                  <Upload className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm font-medium text-slate-700">Drop files here or click to browse</p>
+                  <p className="text-xs text-slate-400 mt-1">CSV, JSON, TXT, PDF, DOCX — up to 50 MB each</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Files are stored locally and never leave your machine</p>
+                </div>
+
+                {/* Supported formats */}
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { icon: FileText, label: 'Documents', desc: 'PDF, DOCX, TXT — extract text and tables' },
+                    { icon: Database, label: 'Spreadsheets', desc: 'CSV, XLSX — structured data ingestion' },
+                    { icon: Globe, label: 'Google Workspace', desc: 'Drive, Gmail, Sheets — OAuth connected' },
+                    { icon: Database, label: 'SQL Database', desc: 'Connected in Step 1 — already linked' },
+                  ].map((item, i) => (
+                    <div key={i} className="flex items-start gap-3 p-3 border border-slate-200 rounded-xl">
+                      <item.icon className="w-4 h-4 text-slate-400 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <span className="text-[13px] font-medium text-slate-700 block">{item.label}</span>
+                        <span className="text-[11px] text-slate-400">{item.desc}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-4 bg-emerald-50/60 border border-emerald-100 rounded-xl text-[13px] text-emerald-900">
+                  <strong>Tip:</strong> The more data you provide, the better the AI understands your business.
+                  You can upload files now or later — the system adapts automatically.
+                </div>
+              </div>
+            )}
+
+            {/* Step 4: Features */}
+            {step === 4 && (
               <div className="space-y-5">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 rounded-lg bg-brand-50 flex items-center justify-center">
@@ -478,7 +528,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                 className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-600 text-white text-sm font-semibold rounded-xl hover:bg-brand-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
               >
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                {step === 3 ? 'Finish Setup' : 'Continue'}
+                {step === 4 ? 'Finish Setup' : 'Continue'}
                 {!loading && <ArrowRight className="w-4 h-4" />}
               </button>
             </div>

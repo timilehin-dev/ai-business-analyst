@@ -1,10 +1,11 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Brain, LayoutDashboard, MessageSquare, Database, Moon } from 'lucide-react';
+import { Brain, LayoutDashboard, MessageSquare, Database, Moon, Settings } from 'lucide-react';
 
 const links = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
   { to: '/data', label: 'Data Sources', icon: Database },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {

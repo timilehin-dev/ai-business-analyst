@@ -4,6 +4,7 @@ import SetupWizard from './components/SetupWizard';
 import Dashboard from './components/Dashboard';
 import ChatInterface from './components/ChatInterface';
 import DataSources from './components/DataSources';
+import SettingsPage from './components/Settings';
 
 function App() {
   return (
@@ -14,6 +15,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/chat" element={<ChatInterface />} />
         <Route path="/data" element={<DataSources />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Router>

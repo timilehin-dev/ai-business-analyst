@@ -23,6 +23,8 @@ from agent.memory.database import db_manager
 from api.routes.setup import router as setup_router
 from api.routes.connectors import router as connectors_router
 from api.routes.briefing import router as briefing_router
+from api.routes.dashboard import router as dashboard_router
+from api.routes.settings import router as settings_router
 
 # ==================== APP INITIALIZATION ====================
 
@@ -147,6 +149,8 @@ app.add_middleware(
 app.include_router(setup_router, prefix="/api")
 app.include_router(connectors_router, prefix="/api")
 app.include_router(briefing_router, prefix="/api")
+app.include_router(dashboard_router, prefix="/api")
+app.include_router(settings_router, prefix="/api")
 
 
 # ==================== ANALYST LIFECYCLE ====================
