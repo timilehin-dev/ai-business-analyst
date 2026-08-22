@@ -32,6 +32,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
     newsroomEnabled: true,
     codeSandboxEnabled: true,
     airGapMode: false,
+    proactiveMonitoring: true,
     sampleData: true,
   });
 
@@ -106,6 +107,7 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             newsroom: config.newsroomEnabled,
             code_sandbox: config.codeSandboxEnabled,
             air_gap: config.airGapMode,
+            proactive_monitoring: config.proactiveMonitoring,
           },
         }),
       });
@@ -501,6 +503,19 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
                       checked={config.airGapMode}
                       onChange={(v) => setConfig({ ...config, airGapMode: v })}
                       disabled={config.aiProvider === 'ollama-local'}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border border-slate-200 rounded-xl">
+                    <div>
+                      <label className="text-sm font-medium text-slate-900">Proactive Monitoring</label>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Run a nightly anomaly scan and morning briefing, plus periodic data sync
+                      </p>
+                    </div>
+                    <Toggle
+                      checked={config.proactiveMonitoring}
+                      onChange={(v) => setConfig({ ...config, proactiveMonitoring: v })}
                     />
                   </div>
                 </div>

@@ -52,21 +52,21 @@ class DatabaseManager:
             self.database_url = database_url
 
         self.engine = create_engine(
-            self.database_url, 
+            self.database_url,
             connect_args={"check_same_thread": False} if "sqlite" in self.database_url else {}
         )
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
-        
+
         # Initialize encryption key (in prod, this should come from a secure env var or vault)
         # For MVP, we generate one and store it in the data folder if it doesn't exist
         self.fernet = self._load_or_generate_key()
-        
+
         Base.metadata.create_all(bind=self.engine)
 
     def _load_or_generate_key(self) -> Fernet:
         key_path = os.path.join(self.data_dir, ".secret_key")
         os.makedirs(os.path.dirname(key_path), exist_ok=True)
-        
+
         if os.path.exists(key_path):
             with open(key_path, "rb") as f:
                 key = f.read()
@@ -92,12 +92,12 @@ class DatabaseManager:
                 existing.is_sensitive = is_sensitive
             else:
                 new_config = ConfigStore(
-                    key=key, 
-                    value_encrypted=encrypted_value, 
+                    key=key,
+                    value_encrypted=encrypted_value,
                     is_sensitive=is_sensitive
                 )
                 session.add(new_config)
-            
+
             session.commit()
         finally:
             session.close()
@@ -109,7 +109,7 @@ class DatabaseManager:
             record = session.query(ConfigStore).filter_by(key=key).first()
             if not record:
                 return None
-            
+
             if is_sensitive and record.is_sensitive:
                 decrypted = self.fernet.decrypt(record.value_encrypted.encode()).decode()
                 try:

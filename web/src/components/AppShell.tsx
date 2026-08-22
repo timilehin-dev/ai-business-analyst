@@ -1,32 +1,61 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Brain, LayoutDashboard, MessageSquare, Database, Moon, Settings } from 'lucide-react';
+import {
+  Brain,
+  LayoutDashboard,
+  MessageSquare,
+  Database,
+  BrainCog,
+  Settings,
+  Moon,
+  Wifi,
+  WifiOff,
+} from 'lucide-react';
+import { api, SystemStatus } from '../lib/api';
+import { useLiveUpdates } from '../hooks/useLiveUpdates';
 
 const links = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/chat', label: 'Chat', icon: MessageSquare },
   { to: '/data', label: 'Data Sources', icon: Database },
+  { to: '/memory', label: 'Memory', icon: BrainCog },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const [status, setStatus] = useState<SystemStatus | null>(null);
+  const [refreshed, setRefreshed] = useState(0);
+  // Re-read status when the live socket reconnects, so the footer reflects
+  // reality after a backend restart rather than a cached startup snapshot.
+  const { connected } = useLiveUpdates(() => setRefreshed((n) => n + 1));
+
+  useEffect(() => {
+    api
+      .get<SystemStatus>('/api/status')
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  }, [refreshed]);
+
+  const proactive = status?.features.proactive_monitoring ?? true;
+  const hour = status?.briefing.hour ?? 6;
+  const timezone = status?.briefing.timezone ?? 'UTC';
 
   return (
     <div className="min-h-screen flex bg-slate-50">
-      {/* Sidebar */}
       <aside className="w-60 flex-shrink-0 bg-slate-900 text-slate-300 flex flex-col fixed inset-y-0 left-0">
-        {/* Logo */}
         <div className="px-5 h-16 flex items-center gap-3 border-b border-slate-800">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center shadow-lg shadow-brand-900/40">
             <Brain className="w-5 h-5 text-white" />
           </div>
           <div className="leading-tight">
-            <div className="text-[15px] font-semibold text-white tracking-tight">AI Business Analyst</div>
+            <div className="text-[15px] font-semibold text-white tracking-tight">
+              AI Business Analyst
+            </div>
             <div className="text-[11px] text-slate-500">Autonomous insights</div>
           </div>
         </div>
 
-        {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-1">
           {links.map(({ to, label, icon: Icon }) => {
             const active = location.pathname === to;
@@ -48,22 +77,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Footer status */}
-        <div className="px-5 py-4 border-t border-slate-800">
-          <div className="flex items-center gap-2 text-[11px] text-slate-500">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-            </span>
-            Sense loop active · 06:00 UTC
+        <div className="px-5 py-4 border-t border-slate-800 space-y-2">
+          {proactive ? (
+            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              Sense loop active · {String(hour).padStart(2, '0')}:00 {timezone}
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-[11px] text-slate-500">
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-slate-500" />
+              Proactive monitoring paused
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+            {connected ? (
+              <Wifi className="w-3 h-3 text-emerald-500" />
+            ) : (
+              <WifiOff className="w-3 h-3 text-slate-500" />
+            )}
+            {connected ? 'Live updates connected' : 'Offline — update won’t auto-refresh'}
           </div>
-          <div className="mt-1.5 text-[11px] text-slate-600 flex items-center gap-1.5">
-            <Moon className="w-3 h-3" /> Nightly briefing scheduled
+
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
+            <Moon className="w-3 h-3" />
+            {proactive ? 'Nightly briefing scheduled' : 'Briefing disabled'}
           </div>
         </div>
       </aside>
 
-      {/* Content */}
       <main className="flex-1 ml-60">
         <div className="max-w-6xl mx-auto px-8 py-8">{children}</div>
       </main>

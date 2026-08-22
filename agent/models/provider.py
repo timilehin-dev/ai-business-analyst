@@ -2,24 +2,35 @@
 Model Provider Layer - Unified interface for all LLM providers.
 Supports Ollama (local/cloud), OpenAI, Anthropic, and any OpenAI-compatible endpoint.
 """
-from typing import List, Dict, Any, Optional, Protocol
-from litellm import completion, embedding
 import asyncio
+import logging
+from typing import Any, Dict, List, Optional, Protocol
+
+from litellm import completion, embedding
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_TIMEOUT_SECONDS = 120
+DEFAULT_EMBEDDING_DIM = 768
+
+
+class ModelUnavailableError(RuntimeError):
+    """Raised when a model call fails and no fallback succeeds."""
 
 
 class ModelProvider(Protocol):
     """Protocol defining the interface for all model providers."""
-    
+
     async def complete(
-        self, 
-        messages: List[Dict[str, str]], 
+        self,
+        messages: List[Dict[str, str]],
         tools: Optional[List[Dict]] = None,
         temperature: float = 0.7,
-        **kwargs
+        **kwargs,
     ) -> str:
         """Generate completion for given messages."""
         ...
-    
+
     async def embed(self, texts: List[str]) -> List[List[float]]:
         """Generate embeddings for texts."""
         ...
@@ -30,91 +41,95 @@ class LiteLLMProvider:
     Universal model provider using LiteLLM.
     Supports 20+ providers with one interface.
     """
-    
-    def __init__(self, model_name: str, api_key: Optional[str] = None, api_base: Optional[str] = None):
+
+    def __init__(
+        self,
+        model_name: str,
+        api_key: Optional[str] = None,
+        api_base: Optional[str] = None,
+        timeout: int = DEFAULT_TIMEOUT_SECONDS,
+    ):
         self.model_name = model_name
         self.api_key = api_key
         self.api_base = api_base
-    
+        self.timeout = timeout
+
     async def complete(
         self,
         messages: List[Dict[str, str]],
         tools: Optional[List[Dict]] = None,
         temperature: float = 0.7,
         max_tokens: int = 2000,
-        **kwargs
+        **kwargs,
     ) -> str:
         """
         Generate completion using LiteLLM.
-        
-        Args:
-            messages: List of message dicts with 'role' and 'content'
-            tools: Optional list of tool definitions for function calling
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            
-        Returns:
-            Generated text response
+
+        Raises:
+            ModelUnavailableError: the endpoint failed or timed out. Callers
+                decide whether to fall back; failing loudly beats returning
+                an empty string that silently corrupts an analysis.
         """
-        loop = asyncio.get_event_loop()
-        
-        def sync_completion():
-            try:
-                response = completion(
-                    model=self.model_name,
-                    messages=messages,
-                    tools=tools,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    api_key=self.api_key,
-                    api_base=self.api_base,
-                    **kwargs
-                )
-                
-                # Extract content from response
-                if hasattr(response, 'choices') and len(response.choices) > 0:
-                    return response.choices[0].message.content or ""
-                return ""
-                
-            except Exception as e:
-                raise Exception(f"Model completion failed: {str(e)}")
-        
-        return await loop.run_in_executor(None, sync_completion)
-    
+
+        def sync_completion() -> str:
+            response = completion(
+                model=self.model_name,
+                messages=messages,
+                tools=tools,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                api_key=self.api_key,
+                api_base=self.api_base,
+                timeout=self.timeout,
+                **kwargs,
+            )
+            choices = getattr(response, "choices", None)
+            if choices:
+                return choices[0].message.content or ""
+            return ""
+
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(sync_completion), timeout=self.timeout + 10
+            )
+        except asyncio.TimeoutError as e:
+            raise ModelUnavailableError(
+                f"Model '{self.model_name}' timed out after {self.timeout}s"
+            ) from e
+        except Exception as e:
+            raise ModelUnavailableError(
+                f"Model '{self.model_name}' failed: {e}"
+            ) from e
+
     async def embed(self, texts: List[str]) -> List[List[float]]:
         """
         Generate embeddings for a list of texts.
-        
-        Args:
-            texts: List of strings to embed
-            
-        Returns:
-            List of embedding vectors
+
+        Returns zero vectors on failure so callers relying on embeddings
+        degrade rather than crash; retrieval elsewhere is lexical and does
+        not depend on this.
         """
-        loop = asyncio.get_event_loop()
-        
-        def sync_embedding():
-            try:
-                # Use the configured embedding model
-                response = embedding(
-                    model=self.model_name.replace('completion', 'embedding') 
-                        if 'completion' in self.model_name else self.model_name,
-                    input=texts,
-                    api_key=self.api_key,
-                    api_base=self.api_base
-                )
-                
-                # Extract embeddings from response
-                if hasattr(response, 'data'):
-                    return [item['embedding'] for item in response.data]
-                return []
-                
-            except Exception as e:
-                print(f"Embedding failed: {e}")
-                # Return zero vectors as fallback
-                return [[0.0] * 768 for _ in texts]
-        
-        return await loop.run_in_executor(None, sync_embedding)
+
+        def sync_embedding() -> List[List[float]]:
+            response = embedding(
+                model=self.model_name,
+                input=texts,
+                api_key=self.api_key,
+                api_base=self.api_base,
+                timeout=self.timeout,
+            )
+            data = getattr(response, "data", None)
+            if data:
+                return [item["embedding"] for item in data]
+            return []
+
+        try:
+            return await asyncio.wait_for(
+                asyncio.to_thread(sync_embedding), timeout=self.timeout + 10
+            )
+        except Exception as e:
+            logger.warning("Embedding failed for %s: %s", self.model_name, e)
+            return [[0.0] * DEFAULT_EMBEDDING_DIM for _ in texts]
 
 
 def prefix_model_name(model_name: str, provider: str) -> str:
@@ -123,6 +138,8 @@ def prefix_model_name(model_name: str, provider: str) -> str:
     e.g. 'qwen2.5:7b' + 'ollama-local' -> 'ollama/qwen2.5:7b'.
     LiteLLM requires the prefix to route to the right provider.
     """
+    if not model_name:
+        return model_name
     if "/" in model_name:
         return model_name
     prefixes = {
@@ -150,6 +167,7 @@ class ModelRouter:
         config: Dict[str, str],
         api_key: Optional[str] = None,
         api_base: Optional[str] = None,
+        timeout: int = DEFAULT_TIMEOUT_SECONDS,
     ):
         """
         Initialize router with model configuration.
@@ -159,31 +177,59 @@ class ModelRouter:
                    e.g., {'reasoning': 'claude-sonnet-4', 'sql': 'ollama/qwen2.5'}
             api_key: Provider API key (None for local Ollama)
             api_base: Custom base URL (e.g. http://localhost:11434)
+            timeout: Per-request timeout in seconds
         """
-        self.providers = {}
-        for task_type, model_name in config.items():
-            self.providers[task_type] = LiteLLMProvider(
-                model_name, api_key=api_key, api_base=api_base
+        if not config:
+            raise ValueError("ModelRouter requires at least one task -> model mapping")
+
+        self.providers: Dict[str, LiteLLMProvider] = {
+            task_type: LiteLLMProvider(
+                model_name, api_key=api_key, api_base=api_base, timeout=timeout
             )
-    
-    def get_provider(self, task_type: str = 'reasoning') -> LiteLLMProvider:
-        """Get provider for specific task type."""
-        if task_type not in self.providers:
-            # Fallback to reasoning model
-            return self.providers.get('reasoning', list(self.providers.values())[0])
-        return self.providers[task_type]
-    
+            for task_type, model_name in config.items()
+            if model_name
+        }
+        if not self.providers:
+            raise ValueError("ModelRouter requires at least one non-empty model name")
+
+    def get_provider(self, task_type: str = "reasoning") -> LiteLLMProvider:
+        """Get provider for a task, falling back to reasoning then any configured model."""
+        provider = self.providers.get(task_type)
+        if provider is not None:
+            return provider
+        provider = self.providers.get("reasoning")
+        if provider is not None:
+            return provider
+        return next(iter(self.providers.values()))
+
     async def complete(
         self,
         messages: List[Dict[str, str]],
-        task_type: str = 'reasoning',
-        **kwargs
+        task_type: str = "reasoning",
+        **kwargs,
     ) -> str:
-        """Route completion request to appropriate model."""
+        """
+        Route a completion to the task's model, retrying once on the
+        configured fallback model when the primary is unreachable.
+        """
         provider = self.get_provider(task_type)
-        return await provider.complete(messages, **kwargs)
-    
-    async def embed(self, texts: List[str], task_type: str = 'embedding') -> List[List[float]]:
+        try:
+            return await provider.complete(messages, **kwargs)
+        except ModelUnavailableError as primary_error:
+            fallback = self.providers.get("fallback")
+            if fallback is None or fallback is provider:
+                raise
+            logger.warning(
+                "Model '%s' unavailable (%s); retrying on fallback '%s'",
+                provider.model_name,
+                primary_error,
+                fallback.model_name,
+            )
+            return await fallback.complete(messages, **kwargs)
+
+    async def embed(
+        self, texts: List[str], task_type: str = "embedding"
+    ) -> List[List[float]]:
         """Route embedding request to appropriate model."""
         provider = self.get_provider(task_type)
         return await provider.embed(texts)

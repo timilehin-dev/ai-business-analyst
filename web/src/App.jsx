@@ -5,6 +5,7 @@ import Dashboard from './components/Dashboard';
 import ChatInterface from './components/ChatInterface';
 import DataSources from './components/DataSources';
 import SettingsPage from './components/Settings';
+import Memory from './components/Memory';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/chat" element={<ChatInterface />} />
         <Route path="/data" element={<DataSources />} />
+        <Route path="/memory" element={<Memory />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

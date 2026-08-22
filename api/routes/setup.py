@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, inspect, text
 
 from agent.memory.database import db_manager
+from agent.memory.memory import memory_store
 
 router = APIRouter(prefix="/setup", tags=["setup"])
 
@@ -64,13 +65,18 @@ class SetupResponse(BaseModel):
 # ==================== HELPERS ====================
 
 def build_connection_url(config: DatabaseConfig) -> str:
-    """Build a SQLAlchemy connection URL from the wizard config."""
+    """
+    Build a SQLAlchemy connection URL from the wizard config.
+
+    An explicit connection string always wins — a user who points at their
+    own SQLite file must not be redirected to the analyst's internal one.
+    """
     if config.connection_string:
         return config.connection_string
 
     if config.type == "sqlite":
-        # In-memory SQLite for testing; real file path used at save time
-        return "sqlite:///:memory:"
+        # No path given: default to a file inside the analyst's data dir.
+        return f"sqlite:///{db_manager.data_dir}/business.db"
 
     if config.type in ("postgresql", "postgres"):
         scheme = "postgresql+psycopg"
@@ -195,10 +201,8 @@ async def complete_setup(request: SetupRequest) -> SetupResponse:
         if request.database.type not in ("sqlite", "postgresql", "postgres", "mysql", "csv"):
             raise HTTPException(status_code=400, detail=f"Unsupported database type: {request.database.type}")
 
-        # 2. Build and store the database URL (encrypted)
+        # 2. Build and store the database URL
         db_url = build_connection_url(request.database)
-        if request.database.type == "sqlite":
-            db_url = f"sqlite:///{db_manager.data_dir}/analyst.db"
         db_manager.save_config("database_url", db_url, is_sensitive=False)
 
         # 2b. Seed sample data if requested (demo tables for instant testing)
@@ -237,8 +241,31 @@ async def complete_setup(request: SetupRequest) -> SetupResponse:
         from api.main import reinitialize_analyst
         reinitialize_analyst()
 
+        # 7. Seed the glossary from the connected schema so the analyst
+        # starts with a vocabulary instead of an empty memory.
+        terms_added = 0
+        try:
+            from api.main import analyst
+
+            if analyst is not None and analyst.db_conn is not None:
+                terms_added = memory_store.generate_glossary_from_schema(analyst.db_conn)
+        except Exception:
+            pass  # A glossary is an optimization, not a setup prerequisite
+
         config_id = str(uuid.uuid4())
         db_manager.save_config("config_id", config_id, is_sensitive=False)
+
+        memory_store.audit(
+            "setup.completed",
+            {
+                "organization": request.organization_name,
+                "database_type": request.database.type,
+                "provider": request.ai.provider,
+                "features": request.features.model_dump(),
+                "glossary_terms_added": terms_added,
+            },
+            actor="user",
+        )
 
         return SetupResponse(
             success=True,
@@ -265,6 +292,8 @@ async def reset_setup() -> Dict[str, Any]:
     # Drop the in-memory analyst so no stale config lingers
     import api.main
     api.main.analyst = None
+
+    memory_store.audit("setup.reset", {"config_entries_removed": removed}, actor="user")
 
     return {
         "success": True,

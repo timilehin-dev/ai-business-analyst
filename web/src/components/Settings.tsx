@@ -32,7 +32,9 @@ interface SettingsData {
     newsroom: boolean;
     code_sandbox: boolean;
     air_gap: boolean;
+    proactive_monitoring: boolean;
   };
+  briefing: { hour: number; timezone: string };
 }
 
 /* ------------------------------------------------------------------ */
@@ -50,7 +52,14 @@ export default function SettingsPage() {
   const [provider, setProvider] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [baseUrl, setBaseUrl] = useState('');
-  const [features, setFeatures] = useState({ newsroom: true, code_sandbox: true, air_gap: false });
+  const [features, setFeatures] = useState({
+    newsroom: true,
+    code_sandbox: true,
+    air_gap: false,
+    proactive_monitoring: true,
+  });
+  const [briefingHour, setBriefingHour] = useState(6);
+  const [briefingTimezone, setBriefingTimezone] = useState('UTC');
 
   useEffect(() => {
     fetch('/api/settings')
@@ -61,6 +70,8 @@ export default function SettingsPage() {
         setProvider(data.ai_provider.provider);
         setBaseUrl(data.ai_provider.base_url || '');
         setFeatures(data.features);
+        setBriefingHour(data.briefing.hour);
+        setBriefingTimezone(data.briefing.timezone);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
@@ -71,11 +82,15 @@ export default function SettingsPage() {
     setError('');
     setSaved(false);
     try {
-      // Save general
+      // Save general (organization + briefing schedule)
       await fetch('/api/settings/general', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ organization_name: orgName }),
+        body: JSON.stringify({
+          organization_name: orgName,
+          briefing_hour: briefingHour,
+          briefing_timezone: briefingTimezone,
+        }),
       });
 
       // Save AI provider
@@ -318,6 +333,67 @@ export default function SettingsPage() {
                 />
               </button>
             </div>
+            {/* Proactive Monitoring */}
+            <div className="px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <RefreshCw className="w-4 h-4 text-slate-400" />
+                <div>
+                  <span className="text-sm font-medium text-slate-900">Proactive Monitoring</span>
+                  <p className="text-[11px] text-slate-400">Nightly anomaly scan, morning briefing, and periodic data sync</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setFeatures({ ...features, proactive_monitoring: !features.proactive_monitoring })}
+                className={`relative w-11 h-6 rounded-full transition-colors ${
+                  features.proactive_monitoring ? 'bg-brand-500' : 'bg-slate-300'
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                    features.proactive_monitoring ? 'translate-x-5' : ''
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* ---- Briefing Schedule ---- */}
+        <section className="bg-white border border-slate-200 rounded-2xl shadow-card overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
+              <Cpu className="w-4 h-4 text-indigo-600" />
+            </div>
+            <h2 className="text-[15px] font-semibold text-slate-900">Briefing Schedule</h2>
+          </div>
+          <div className="px-6 py-5 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Hour (24h, UTC-relative)
+              </label>
+              <input
+                type="number"
+                min={0}
+                max={23}
+                value={briefingHour}
+                onChange={(e) => setBriefingHour(Number(e.target.value))}
+                className="w-full max-w-[5rem] px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Time Zone</label>
+              <input
+                type="text"
+                value={briefingTimezone}
+                onChange={(e) => setBriefingTimezone(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                placeholder="UTC"
+              />
+            </div>
+            <p className="text-[11px] text-slate-400 sm:col-span-2">
+              The Sense loop runs a nightly anomaly scan and writes the next morning’s briefing.
+              Schedule changes apply on the next server restart.
+            </p>
           </div>
         </section>
 
