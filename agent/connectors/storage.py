@@ -105,6 +105,19 @@ class DocumentStore:
                 updated += 1
         return {"created": created, "updated": updated}
 
+    def get_document_id(self, source: str, source_id: str) -> Optional[int]:
+        """Return the DB id of a stored document, or None."""
+        session = self.SessionLocal()
+        try:
+            rec = (
+                session.query(DocumentRecord.id)
+                .filter_by(source=source, source_id=source_id)
+                .first()
+            )
+            return rec[0] if rec else None
+        finally:
+            session.close()
+
     def list_documents(
         self, source: Optional[str] = None, limit: int = 100, offset: int = 0
     ) -> List[Dict[str, Any]]:

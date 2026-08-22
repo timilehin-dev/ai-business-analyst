@@ -25,7 +25,8 @@ import Markdown from './Markdown';
 /* ------------------------------------------------------------------ */
 interface DashboardMetrics {
   revenue: number;
-  revenue_previous: number;
+  revenue_30d: number;
+  revenue_prev_30d: number;
   total_orders: number;
   total_customers: number;
   total_products: number;
@@ -171,7 +172,9 @@ export default function Dashboard() {
   });
 
   const m = dash?.metrics;
-  const revenueGrowth = m ? pctChange(m.revenue, m.revenue_previous) : 0;
+  // Growth compares the last 30 days against the prior 30 days (backend
+  // provides both windows explicitly — the all-time total stayed as display)
+  const revenueGrowth = m ? pctChange(m.revenue_30d, m.revenue_prev_30d) : 0;
 
   /* ---- KPI card config ---- */
   const kpis = m

@@ -77,24 +77,40 @@ async def get_dashboard_data() -> Dict[str, Any]:
 
     metrics: Dict[str, Any] = {}
 
-    # Revenue (try 'completed' status first, then all orders)
+    # Revenue (completed orders only if statuses exist, else all orders)
     rev = _q(engine,
         "SELECT SUM(quantity * unit_price) FROM orders WHERE LOWER(status) = 'completed'")
     if rev is None:
         rev = _q(engine, "SELECT SUM(quantity * unit_price) FROM orders")
     metrics["revenue"] = float(rev) if rev else 0
 
-    # Previous period revenue (30 days ago)
-    prev_rev = _q(engine, """
+    # 30-day windows for a meaningful growth comparison:
+    #   revenue_30d      = last 30 days
+    #   revenue_prev_30d = the 30 days before that (31–60 days ago)
+    rev_30d = _q(engine, """
         SELECT SUM(quantity * unit_price) FROM orders
-        WHERE LOWER(status) = 'completed' AND ordered_at < datetime('now', '-30 days')
+        WHERE LOWER(status) = 'completed' AND ordered_at >= datetime('now', '-30 days')
     """)
-    if prev_rev is None:
-        prev_rev = _q(engine, """
+    if rev_30d is None:
+        rev_30d = _q(engine, """
             SELECT SUM(quantity * unit_price) FROM orders
-            WHERE ordered_at < datetime('now', '-30 days')
+            WHERE ordered_at >= datetime('now', '-30 days')
         """)
-    metrics["revenue_previous"] = float(prev_rev) if prev_rev else 0
+    metrics["revenue_30d"] = float(rev_30d) if rev_30d else 0
+
+    rev_prev_30d = _q(engine, """
+        SELECT SUM(quantity * unit_price) FROM orders
+        WHERE LOWER(status) = 'completed'
+          AND ordered_at >= datetime('now', '-60 days')
+          AND ordered_at < datetime('now', '-30 days')
+    """)
+    if rev_prev_30d is None:
+        rev_prev_30d = _q(engine, """
+            SELECT SUM(quantity * unit_price) FROM orders
+            WHERE ordered_at >= datetime('now', '-60 days')
+              AND ordered_at < datetime('now', '-30 days')
+        """)
+    metrics["revenue_prev_30d"] = float(rev_prev_30d) if rev_prev_30d else 0
 
     # Counts
     metrics["total_orders"] = _q(engine, "SELECT COUNT(*) FROM orders") or 0
@@ -161,14 +177,17 @@ async def get_dashboard_data() -> Dict[str, Any]:
             GROUP BY c.name ORDER BY revenue DESC LIMIT 5
         """)
 
-    # Convert Decimal/float for JSON serialization
+    # Convert DB-native numerics (Decimal etc.) for JSON — but preserve
+    # int values so counts stay 1200, not 1200.0
     def _clean(obj):
         if isinstance(obj, dict):
             return {k: _clean(v) for k, v in obj.items()}
         if isinstance(obj, list):
             return [_clean(i) for i in obj]
+        if isinstance(obj, (int, float, str, bool)) or obj is None:
+            return obj
         if hasattr(obj, "__float__"):
-            return float(obj)
+            return float(obj)  # Decimal and similar
         return obj
 
     return _clean({

@@ -2,10 +2,13 @@
 Graph-level tests: full analysis flow, self-correction retry, and
 termination when no database is configured.
 """
+import pytest
+
 from conftest import FakeModelRouter, build_graph, PLAN_JSON
 
 
 class TestFullFlow:
+    @pytest.mark.asyncio
     async def test_happy_path(self, happy_router, sample_db_path):
         graph = build_graph(happy_router, database_url=f"sqlite:///{sample_db_path}")
         result = await graph.ainvoke(
@@ -38,6 +41,7 @@ class TestFullFlow:
         assert happy_router.calls.count("reasoning") == 2
         assert happy_router.calls.count("sql") == 1
 
+    @pytest.mark.asyncio
     async def test_schema_info_auto_crawled(self, happy_router, sample_db_path):
         """analyze() should crawl the schema when none is provided."""
         from agent.core.analyst import AutonomousAnalyst
@@ -60,6 +64,7 @@ class TestFullFlow:
 
 
 class TestSelfCorrection:
+    @pytest.mark.asyncio
     async def test_retry_after_security_violation(self, sample_db_path):
         """A blocked (non-SELECT) query must trigger a retry with a valid query."""
         router = FakeModelRouter(
@@ -101,6 +106,7 @@ class TestSelfCorrection:
         assert result["execution_result"]["rows"] == [[2]]
         assert router.calls.count("sql") == 2  # one failed attempt + one retry
 
+    @pytest.mark.asyncio
     async def test_loop_terminates_without_database(self):
         """No DB configured: retries exhaust, then escalate (no infinite loop)."""
         router = FakeModelRouter(

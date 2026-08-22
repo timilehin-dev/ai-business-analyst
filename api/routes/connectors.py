@@ -63,10 +63,11 @@ async def upload_file(file: UploadFile = File(...)) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e))
 
     created = document_store.save_document(doc)
+    doc_id = document_store.get_document_id(doc.source, doc.source_id)
     return {
         "success": True,
         "document": {
-            "id": None,  # assigned by store; list endpoint returns ids
+            "id": doc_id,
             "source": doc.source,
             "title": doc.title,
             "created": created,

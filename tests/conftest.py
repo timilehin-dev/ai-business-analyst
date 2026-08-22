@@ -7,11 +7,37 @@ import sqlite3
 import tempfile
 
 import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 from agent.core.analyst import create_agent_graph
+from agent.memory.database import Base, db_manager
+from agent.connectors import storage as storage_mod
 from agent.tools.database import DatabaseConnection
 from agent.tools.newsroom import NewsroomTool
 from agent.tools.sql_validator import SQLValidatorTool
+
+
+@pytest.fixture(autouse=True)
+def isolated_analyst_db(tmp_path, monkeypatch):
+    """
+    Give every test its own throwaway analyst database.
+
+    document_store and db_manager are module-level singletons bound to the
+    app's real data dir at import time. Without this fixture, tests mutate
+    the live analyst.db AND become run-order dependent (rerunning the suite
+    fails because documents persist between runs). Patch both singletons to
+    a per-test temp SQLite file so tests are hermetic and repeatable.
+    """
+    engine = create_engine(f"sqlite:///{tmp_path}/analyst_test.db")
+    Base.metadata.create_all(bind=engine)
+    Session = sessionmaker(bind=engine)
+    monkeypatch.setattr(db_manager, "engine", engine)
+    monkeypatch.setattr(db_manager, "SessionLocal", Session)
+    store = storage_mod.document_store
+    monkeypatch.setattr(store, "engine", engine)
+    monkeypatch.setattr(store, "SessionLocal", Session)
+    yield
 
 PLAN_JSON = (
     '{"plan": "1. Query orders 2. Aggregate revenue by customer", '

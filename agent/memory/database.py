@@ -118,5 +118,16 @@ class DatabaseManager:
         """Check if the system has been set up via the wizard."""
         return self.get_config("setup_complete", is_sensitive=False) is True
 
+    def clear_config(self) -> int:
+        """Delete ALL configuration entries. Data tables are untouched.
+        Returns the number of config rows removed."""
+        session = self.SessionLocal()
+        try:
+            count = session.query(ConfigStore).delete()
+            session.commit()
+            return count
+        finally:
+            session.close()
+
 # Global instance
 db_manager = DatabaseManager()

@@ -101,8 +101,8 @@ async def get_setup_status() -> Dict[str, Any]:
     return {
         "is_configured": is_configured,
         "needs_setup": not is_configured,
-        "current_step": 3 if is_configured else 1,
-        "total_steps": 3,
+        "current_step": 4 if is_configured else 1,
+        "total_steps": 4,
     }
 
 
@@ -251,6 +251,26 @@ async def complete_setup(request: SetupRequest) -> SetupResponse:
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Setup failed: {str(e)}")
+
+
+@router.post("/reset")
+async def reset_setup() -> Dict[str, Any]:
+    """
+    Reset all configuration (wipes the encrypted config store) so the
+    setup wizard appears again. Business data, documents, and briefings
+    are NOT deleted.
+    """
+    removed = db_manager.clear_config()
+
+    # Drop the in-memory analyst so no stale config lingers
+    import api.main
+    api.main.analyst = None
+
+    return {
+        "success": True,
+        "config_entries_removed": removed,
+        "message": "Configuration reset. Run the setup wizard to reconfigure.",
+    }
 
 
 @router.get("/providers")
